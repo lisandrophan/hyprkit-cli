@@ -1,3 +1,9 @@
+## [4.5.1](https://github.com/mrgoonie/claudekit-cli/compare/v4.5.0...v4.5.1) (2026-07-03)
+
+### 🔥 Hotfixes
+
+* stream post-update kit refresh ([8f57004](https://github.com/mrgoonie/claudekit-cli/commit/8f570042076054f80826ff6366d459bf09d0200d))
+
 ## [4.5.0](https://github.com/mrgoonie/claudekit-cli/compare/v4.4.0...v4.5.0) (2026-06-18)
 
 ### 🚀 Features
