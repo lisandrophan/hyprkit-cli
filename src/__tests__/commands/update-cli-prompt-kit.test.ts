@@ -31,7 +31,7 @@ describe("promptKitUpdate version display", () => {
 		Reflect.deleteProperty(process.env, "CK_TEST_HOME");
 	});
 
-	/** Build deps with injectable exec side-effect and spinner capture */
+	/** Build deps with injectable ck init side-effect and spinner capture */
 	function makeDeps(opts?: {
 		sideEffect?: () => void | Promise<void>;
 		latestTag?: string | null;
@@ -47,7 +47,7 @@ describe("promptKitUpdate version display", () => {
 				execCalled = true;
 				execCommands.push(command);
 				if (opts?.sideEffect) await opts.sideEffect();
-				return { stdout: "", stderr: "" };
+				return 0;
 			},
 			getSetupFn: (async () => ({
 				global: {
@@ -113,13 +113,14 @@ describe("promptKitUpdate version display", () => {
 			},
 		});
 
-		await promptKitUpdate(false, true, deps);
+		const logs = await captureConsoleLog(() => promptKitUpdate(false, true, deps));
 
-		const stopMsg = stopCalls.find((m) => m.includes("->"));
-		expect(stopMsg).toBeDefined();
-		expect(stopMsg).toContain("1.0.0");
-		expect(stopMsg).toContain("2.0.0");
-		expect(stopMsg).toContain("engineer");
+		const successMsg = logs.find((m) => m.includes("Kit updated:"));
+		expect(successMsg).toBeDefined();
+		expect(successMsg).toContain("1.0.0");
+		expect(successMsg).toContain("2.0.0");
+		expect(successMsg).toContain("engineer");
+		expect(stopCalls).toContain("Running ClaudeKit content update");
 	});
 
 	it("skips update entirely when latest tag matches installed version", async () => {
@@ -131,12 +132,12 @@ describe("promptKitUpdate version display", () => {
 			}),
 		);
 
-		const { deps, stopCalls, wasExecCalled } = makeDeps({ latestTag: "v1.0.0" });
+		const { deps, stopCalls, wasSpawnCalled } = makeDeps({ latestTag: "v1.0.0" });
 
 		await promptKitUpdate(false, true, deps);
 
 		// Init command should NOT have been called
-		expect(wasExecCalled()).toBe(false);
+		expect(wasSpawnCalled()).toBe(false);
 		// No spinner stop calls (skipped before spinner starts)
 		expect(stopCalls.length).toBe(0);
 	});
@@ -156,7 +157,7 @@ describe("promptKitUpdate version display", () => {
 		};
 
 		await promptKitUpdate(false, true, depsWithPrefix.deps);
-		expect(depsWithPrefix.wasExecCalled()).toBe(false);
+		expect(depsWithPrefix.wasSpawnCalled()).toBe(false);
 	});
 
 	it("runs kit init for mixed plugin installs with tracked legacy skills even when version matches", async () => {
@@ -190,12 +191,12 @@ describe("promptKitUpdate version display", () => {
 			}),
 		);
 
-		const { deps, wasExecCalled } = makeDeps({ latestTag: null });
+		const { deps, wasSpawnCalled } = makeDeps({ latestTag: null });
 
 		await promptKitUpdate(false, true, deps);
 
-		// Should still call exec since version check was inconclusive
-		expect(wasExecCalled()).toBe(true);
+		// Should still spawn ck init since version check was inconclusive
+		expect(wasSpawnCalled()).toBe(true);
 	});
 
 	it("falls back to generic message when post-init metadata is unreadable", async () => {
@@ -214,10 +215,10 @@ describe("promptKitUpdate version display", () => {
 			},
 		});
 
-		await promptKitUpdate(false, true, deps);
+		const logs = await captureConsoleLog(() => promptKitUpdate(false, true, deps));
 
-		const stopMsg = stopCalls[stopCalls.length - 1];
-		expect(stopMsg).toBe("Kit content updated");
+		expect(logs.some((m) => m.includes("Kit content updated"))).toBe(true);
+		expect(stopCalls).toContain("Running ClaudeKit content update");
 	});
 });
 

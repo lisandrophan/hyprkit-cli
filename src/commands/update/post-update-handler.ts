@@ -287,6 +287,25 @@ export async function countMissingCkHookRegistrations(
 
 // ─── Init command builder ─────────────────────────────────────────────────────
 
+interface BuildInitArgsOptions {
+	isGlobal: boolean;
+	kit?: KitType;
+	beta?: boolean;
+	yes?: boolean;
+	restoreCkHooks?: boolean;
+}
+
+function buildInitArgs(options: BuildInitArgsOptions): string[] {
+	const args = ["init"];
+	if (options.isGlobal) args.push("-g");
+	if (options.kit) args.push("--kit", options.kit);
+	if (options.yes) args.push("--yes");
+	if (options.restoreCkHooks) args.push("--restore-ck-hooks");
+	args.push("--install-skills");
+	if (options.beta) args.push("--beta");
+	return args;
+}
+
 /**
  * Build init command with appropriate flags for kit type.
  * @internal Exported for testing
@@ -351,6 +370,19 @@ export function resolveCkInitSpawnCommand(
 		command: resolveCkExecutable(options.platformName),
 		args: initArgs,
 	};
+}
+
+function createDefaultSpawnInitFn(): (args: string[]) => Promise<number> {
+	return (spawnArgs: string[]) =>
+		new Promise<number>((resolve) => {
+			const initCommand = resolveCkInitSpawnCommand(spawnArgs);
+			const child = spawn(initCommand.command, initCommand.args, { stdio: "inherit" });
+			child.on("close", (code) => resolve(code ?? 1));
+			child.on("error", (err) => {
+				logger.verbose(`Failed to spawn ck init: ${err.message}`);
+				resolve(1);
+			});
+		});
 }
 
 // ─── Latest release tag fetcher ───────────────────────────────────────────────
@@ -441,11 +473,11 @@ export async function promptKitUpdate(
 	deps?: PromptKitUpdateDeps,
 ): Promise<void> {
 	try {
-		const execFn = deps?.execAsyncFn ?? (execAsync as ExecAsyncFn);
 		const loadFullConfigFn = deps?.loadFullConfigFn ?? CkConfigManager.loadFull;
 		const confirmFn = deps?.confirmFn ?? confirm;
 		const isCancelFn = deps?.isCancelFn ?? isCancel;
 		const getSetupFn = deps?.getSetupFn ?? getClaudeKitSetup;
+		const spawnFn = deps?.spawnInitFn ?? createDefaultSpawnInitFn();
 		const findMissingHookDepsFn =
 			deps?.findMissingHookDependenciesFn ?? findMissingHookDependencies;
 		const detectInstallModeFn = deps?.detectInstallModeFn ?? detectInstallMode;
@@ -728,10 +760,15 @@ export async function promptKitUpdate(
 			);
 			logger.info(`Running: ${initCmd}`);
 			const s = (deps?.spinnerFn ?? spinner)();
-			s.start("Updating ClaudeKit content...");
+			s.start("Preparing ClaudeKit content update...");
+			s.stop("Running ClaudeKit content update");
 
 			try {
-				await execFn(initCmd, { timeout: 300000 });
+				const exitCode = await spawnFn(args);
+				if (exitCode !== 0) {
+					logger.warning("Kit content update may have encountered issues");
+					return;
+				}
 
 				let newKitVersion: string | undefined;
 				try {
@@ -745,14 +782,13 @@ export async function promptKitUpdate(
 				}
 
 				if (selection.kit && kitVersion && newKitVersion && kitVersion !== newKitVersion) {
-					s.stop(`Kit updated: ${selection.kit}@${kitVersion} -> ${newKitVersion}`);
+					logger.success(`Kit updated: ${selection.kit}@${kitVersion} -> ${newKitVersion}`);
 				} else if (selection.kit && newKitVersion) {
-					s.stop(`Kit content updated (${selection.kit}@${newKitVersion})`);
+					logger.success(`Kit content updated (${selection.kit}@${newKitVersion})`);
 				} else {
-					s.stop("Kit content updated");
+					logger.success("Kit content updated");
 				}
 			} catch (error) {
-				s.stop("Kit update finished");
 				const errorMsg = error instanceof Error ? error.message : "unknown";
 				if (installModePreference === "plugin") {
 					throw new StrictPluginUpdateError(`Strict plugin kit update failed: ${errorMsg}`);
@@ -776,19 +812,6 @@ export async function promptKitUpdate(
 
 			const displayCmd = `ck ${args.join(" ")}`;
 			logger.info(`Running: ${displayCmd}`);
-
-			const spawnFn =
-				deps?.spawnInitFn ??
-				((spawnArgs: string[]) =>
-					new Promise<number>((resolve) => {
-						const initCommand = resolveCkInitSpawnCommand(spawnArgs);
-						const child = spawn(initCommand.command, initCommand.args, { stdio: "inherit" });
-						child.on("close", (code) => resolve(code ?? 1));
-						child.on("error", (err) => {
-							logger.verbose(`Failed to spawn ck init: ${err.message}`);
-							resolve(1);
-						});
-					}));
 
 			const exitCode = await spawnFn(args);
 			if (exitCode !== 0) {
