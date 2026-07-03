@@ -39,13 +39,13 @@ describe("promptKitUpdate version display", () => {
 		hasTrackedPluginSuppliedLegacyFiles?: boolean;
 	}) {
 		const stopCalls: string[] = [];
-		const execCommands: string[] = [];
 		const hasLegacyInstall = opts?.installMode === "legacy" || opts?.installMode === "mixed";
-		let execCalled = false;
+		const spawnArgs: string[][] = [];
+		let spawnCalled = false;
 		const deps: PromptKitUpdateDeps = {
-			execAsyncFn: async (command) => {
-				execCalled = true;
-				execCommands.push(command);
+			spawnInitFn: async (args) => {
+				spawnCalled = true;
+				spawnArgs.push(args);
 				if (opts?.sideEffect) await opts.sideEffect();
 				return 0;
 			},
@@ -88,7 +88,21 @@ describe("promptKitUpdate version display", () => {
 				opts?.hasTrackedPluginSuppliedLegacyFiles ?? false,
 			shouldRefreshCodexPluginFn: async () => false,
 		};
-		return { deps, stopCalls, execCommands, wasExecCalled: () => execCalled };
+		return { deps, stopCalls, spawnArgs, wasSpawnCalled: () => spawnCalled };
+	}
+
+	async function captureConsoleLog(fn: () => Promise<void>): Promise<string[]> {
+		const logs: string[] = [];
+		const originalLog = console.log;
+		console.log = (...args: unknown[]) => {
+			logs.push(args.map(String).join(" "));
+		};
+		try {
+			await fn();
+		} finally {
+			console.log = originalLog;
+		}
+		return logs;
 	}
 
 	it("shows version transition when kit version changed after init", async () => {
@@ -169,7 +183,7 @@ describe("promptKitUpdate version display", () => {
 			}),
 		);
 
-		const { deps, execCommands, wasExecCalled } = makeDeps({
+		const { deps, spawnArgs, wasSpawnCalled } = makeDeps({
 			latestTag: "v1.0.0",
 			installMode: "mixed",
 			hasTrackedPluginSuppliedLegacyFiles: true,
@@ -177,9 +191,13 @@ describe("promptKitUpdate version display", () => {
 
 		await promptKitUpdate(false, true, deps);
 
-		expect(wasExecCalled()).toBe(true);
-		expect(execCommands[0]).toContain("ck init -g --kit engineer --yes");
-		expect(execCommands[0]).toContain("--restore-ck-hooks");
+		expect(wasSpawnCalled()).toBe(true);
+		expect(spawnArgs[0]).toContain("init");
+		expect(spawnArgs[0]).toContain("-g");
+		expect(spawnArgs[0]).toContain("--kit");
+		expect(spawnArgs[0]).toContain("engineer");
+		expect(spawnArgs[0]).toContain("--yes");
+		expect(spawnArgs[0]).toContain("--restore-ck-hooks");
 	});
 
 	it("proceeds normally when latest tag fetch fails (returns null)", async () => {

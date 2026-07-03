@@ -318,31 +318,37 @@ describe("promptKitUpdate auto-init behavior", () => {
 	});
 
 	test("reinstalls latest global engineer kit when Codex plugin is missing (--yes mode)", async () => {
-		const { deps, execCount, spawnCount, capturedExecCmd } = makeDeps();
+		const { deps, execCount, spawnCount, capturedSpawnArgs } = makeDeps();
 		deps.getLatestReleaseTagFn = async () => "v1.0.0";
 		deps.shouldRefreshCodexPluginFn = async () => true;
 
 		await promptKitUpdate(false, true, deps);
 
-		expect(execCount()).toBe(1);
-		expect(spawnCount()).toBe(0);
-		expect(capturedExecCmd()).toContain("ck init -g");
-		expect(capturedExecCmd()).toContain("--kit engineer");
-		expect(capturedExecCmd()).toContain("--restore-ck-hooks");
+		expect(spawnCount()).toBe(1);
+		expect(execCount()).toBe(0);
+		expect(capturedSpawnArgs()).toContain("init");
+		expect(capturedSpawnArgs()).toContain("-g");
+		expect(capturedSpawnArgs()).toContain("--kit");
+		expect(capturedSpawnArgs()).toContain("engineer");
+		expect(capturedSpawnArgs()).toContain("--yes");
+		expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
 	});
 
 	test("reinstalls latest legacy global engineer kit to migrate plugin format (--yes mode)", async () => {
-		const { deps, execCount, spawnCount, capturedExecCmd } = makeDeps();
+		const { deps, execCount, spawnCount, capturedSpawnArgs } = makeDeps();
 		deps.getLatestReleaseTagFn = async () => "v1.0.0";
 		deps.detectInstallModeFn = () => makeInstallModeReport(tempDir, "legacy");
 
 		await promptKitUpdate(false, true, deps);
 
-		expect(execCount()).toBe(1);
-		expect(spawnCount()).toBe(0);
-		expect(capturedExecCmd()).toContain("ck init -g");
-		expect(capturedExecCmd()).toContain("--kit engineer");
-		expect(capturedExecCmd()).toContain("--restore-ck-hooks");
+		expect(spawnCount()).toBe(1);
+		expect(execCount()).toBe(0);
+		expect(capturedSpawnArgs()).toContain("init");
+		expect(capturedSpawnArgs()).toContain("-g");
+		expect(capturedSpawnArgs()).toContain("--kit");
+		expect(capturedSpawnArgs()).toContain("engineer");
+		expect(capturedSpawnArgs()).toContain("--yes");
+		expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
 	});
 
 	test("preserves explicit legacy preference and skips same-version plugin migration", async () => {
@@ -360,28 +366,28 @@ describe("promptKitUpdate auto-init behavior", () => {
 
 	test("passes explicit legacy preference through version updates without plugin self-heal", async () => {
 		await writeMetadata(tempDir, "1.0.0", "legacy");
-		const { deps, execCount, capturedExecCmd } = makeDeps();
+		const { deps, execCount, spawnCount, capturedSpawnArgs } = makeDeps();
 		deps.getLatestReleaseTagFn = async () => "v2.0.0";
 		deps.detectInstallModeFn = () => makeInstallModeReport(tempDir, "legacy");
 		deps.hasTrackedPluginSuppliedLegacyFilesFn = () => true;
 
 		await promptKitUpdate(false, true, deps);
 
-		expect(execCount()).toBe(1);
-		expect(capturedExecCmd()).toContain("--install-mode legacy");
-		expect(capturedExecCmd()).not.toContain("--restore-ck-hooks");
+		expect(spawnCount()).toBe(1);
+		expect(execCount()).toBe(0);
+		expect(capturedSpawnArgs()).toContain("--install-mode");
+		expect(capturedSpawnArgs()).toContain("legacy");
+		expect(capturedSpawnArgs()).not.toContain("--restore-ck-hooks");
 	});
 
 	test("strict plugin preference propagates failed non-interactive init", async () => {
 		await writeMetadata(tempDir, "1.0.0", "plugin");
 		const { deps } = makeDeps();
 		deps.getLatestReleaseTagFn = async () => "v2.0.0";
-		deps.execAsyncFn = async () => {
-			throw new Error("Command failed with exit code 1");
-		};
+		deps.spawnInitFn = async () => 1;
 
 		await expect(promptKitUpdate(false, true, deps)).rejects.toThrow(
-			"Strict plugin kit update failed",
+			"Strict plugin kit update failed with exit code 1",
 		);
 	});
 
@@ -396,15 +402,16 @@ describe("promptKitUpdate auto-init behavior", () => {
 	});
 
 	test("reinstalls latest mixed install only when plugin-supplied legacy files remain", async () => {
-		const { deps, execCount, capturedExecCmd } = makeDeps();
+		const { deps, execCount, spawnCount, capturedSpawnArgs } = makeDeps();
 		deps.getLatestReleaseTagFn = async () => "v1.0.0";
 		deps.detectInstallModeFn = () => makeInstallModeReport(tempDir, "mixed");
 		deps.hasTrackedPluginSuppliedLegacyFilesFn = () => true;
 
 		await promptKitUpdate(false, true, deps);
 
-		expect(execCount()).toBe(1);
-		expect(capturedExecCmd()).toContain("--restore-ck-hooks");
+		expect(spawnCount()).toBe(1);
+		expect(execCount()).toBe(0);
+		expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
 	});
 
 	test("skips latest mixed install after plugin-supplied legacy files are cleaned", async () => {
@@ -458,14 +465,15 @@ describe("promptKitUpdate auto-init behavior", () => {
 			projectScopedCommands: true,
 		});
 
-		const { deps, execCount, spawnCount, capturedExecCmd } = makeDeps();
+		const { deps, execCount, spawnCount, capturedSpawnArgs } = makeDeps();
 		deps.getLatestReleaseTagFn = async () => "v1.0.0";
 		await promptKitUpdate(false, true, deps);
 
-		expect(execCount()).toBe(1);
-		expect(spawnCount()).toBe(0);
-		expect(capturedExecCmd()).toContain("ck init -g");
-		expect(capturedExecCmd()).toContain("--restore-ck-hooks");
+		expect(spawnCount()).toBe(1);
+		expect(execCount()).toBe(0);
+		expect(capturedSpawnArgs()).toContain("init");
+		expect(capturedSpawnArgs()).toContain("-g");
+		expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
 	});
 
 	test("does not force global hook restore for hooks explicitly disabled in .ck.json", async () => {

@@ -92,7 +92,7 @@ describe("plugin install-mode convergence integration", () => {
 
 		await promptKitUpdate(false, true, capture.deps);
 
-		expect(capture.execCommands).toEqual([
+		expect(capture.spawnCommands).toEqual([
 			"ck init -g --kit engineer --yes --restore-ck-hooks --install-mode auto --install-skills",
 		]);
 		const codexCalls = await readCodexCalls(testEnv.codexLog);
@@ -125,7 +125,7 @@ describe("plugin install-mode convergence integration", () => {
 
 		await promptKitUpdate(false, true, capture.deps);
 
-		expect(capture.execCommands).toEqual([
+		expect(capture.spawnCommands).toEqual([
 			"ck init -g --kit engineer --yes --install-mode legacy --install-skills",
 		]);
 		await expect(readCodexCalls(testEnv.codexLog)).resolves.toEqual([]);
@@ -135,12 +135,12 @@ describe("plugin install-mode convergence integration", () => {
 function createUpdateCapture(options: {
 	detectInstallMode: () => InstallModeReport;
 	latestVersion: string;
-}): { deps: PromptKitUpdateDeps; execCommands: string[] } {
-	const execCommands: string[] = [];
+}): { deps: PromptKitUpdateDeps; spawnCommands: string[] } {
+	const spawnCommands: string[] = [];
 	const deps: PromptKitUpdateDeps = {
-		execAsyncFn: async (cmd: string) => {
-			execCommands.push(cmd);
-			return { stdout: "", stderr: "" };
+		spawnInitFn: async (args: string[]) => {
+			spawnCommands.push(`ck ${args.join(" ")}`);
+			return 0;
 		},
 		getSetupFn: async () => ({
 			global: {
@@ -173,7 +173,7 @@ function createUpdateCapture(options: {
 		detectInstallModeFn: options.detectInstallMode,
 		hasTrackedPluginSuppliedLegacyFilesFn: () => false,
 	};
-	return { deps, execCommands };
+	return { deps, spawnCommands };
 }
 
 async function writeMetadata(

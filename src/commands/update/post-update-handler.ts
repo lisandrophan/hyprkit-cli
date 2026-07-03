@@ -293,6 +293,7 @@ interface BuildInitArgsOptions {
 	beta?: boolean;
 	yes?: boolean;
 	restoreCkHooks?: boolean;
+	installMode?: InstallModePreference;
 }
 
 function buildInitArgs(options: BuildInitArgsOptions): string[] {
@@ -301,6 +302,9 @@ function buildInitArgs(options: BuildInitArgsOptions): string[] {
 	if (options.kit) args.push("--kit", options.kit);
 	if (options.yes) args.push("--yes");
 	if (options.restoreCkHooks) args.push("--restore-ck-hooks");
+	if (options.installMode && options.isGlobal && options.kit === "engineer") {
+		args.push("--install-mode", options.installMode);
+	}
 	args.push("--install-skills");
 	if (options.beta) args.push("--beta");
 	return args;
@@ -318,15 +322,7 @@ export function buildInitCommand(
 	restoreCkHooks?: boolean,
 	installMode?: InstallModePreference,
 ): string {
-	const parts = ["ck init"];
-	if (isGlobal) parts.push("-g");
-	if (kit) parts.push(`--kit ${kit}`);
-	if (yes) parts.push("--yes");
-	if (restoreCkHooks) parts.push("--restore-ck-hooks");
-	if (installMode && isGlobal && kit === "engineer") parts.push(`--install-mode ${installMode}`);
-	parts.push("--install-skills");
-	if (beta) parts.push("--beta");
-	return parts.join(" ");
+	return `ck ${buildInitArgs({ isGlobal, kit, beta, yes, restoreCkHooks, installMode }).join(" ")}`;
 }
 
 export function resolveCkExecutable(platformName: NodeJS.Platform = process.platform): string {
@@ -749,16 +745,15 @@ export async function promptKitUpdate(
 		const useBeta = beta || isBetaInstalled;
 
 		if (yes) {
-			// Non-interactive: exec with pre-selected kit + spinner
-			const initCmd = buildInitCommand(
-				selection.isGlobal,
-				selection.kit,
-				useBeta,
-				true,
-				forceKitReinstall,
-				installModePreference,
-			);
-			logger.info(`Running: ${initCmd}`);
+			const args = buildInitArgs({
+				isGlobal: selection.isGlobal,
+				kit: selection.kit,
+				beta: useBeta,
+				yes: true,
+				restoreCkHooks: forceKitReinstall,
+				installMode: installModePreference,
+			});
+			logger.info(`Running: ck ${args.join(" ")}`);
 			const s = (deps?.spinnerFn ?? spinner)();
 			s.start("Preparing ClaudeKit content update...");
 			s.stop("Running ClaudeKit content update");
@@ -766,6 +761,11 @@ export async function promptKitUpdate(
 			try {
 				const exitCode = await spawnFn(args);
 				if (exitCode !== 0) {
+					if (installModePreference === "plugin") {
+						throw new StrictPluginUpdateError(
+							`Strict plugin kit update failed with exit code ${exitCode}`,
+						);
+					}
 					logger.warning("Kit content update may have encountered issues");
 					return;
 				}
@@ -789,26 +789,23 @@ export async function promptKitUpdate(
 					logger.success("Kit content updated");
 				}
 			} catch (error) {
+				if (error instanceof StrictPluginUpdateError) throw error;
 				const errorMsg = error instanceof Error ? error.message : "unknown";
 				if (installModePreference === "plugin") {
 					throw new StrictPluginUpdateError(`Strict plugin kit update failed: ${errorMsg}`);
 				}
-				if (errorMsg.includes("exit code") && !errorMsg.includes("exit code 0")) {
-					logger.warning("Kit content update may have encountered issues");
-					logger.verbose(`Error: ${errorMsg}`);
-				} else {
-					logger.verbose(`Init command completed: ${errorMsg}`);
-				}
+				logger.warning("Kit content update may have encountered issues");
+				logger.verbose(`Error: ${errorMsg}`);
 			}
 		} else {
 			// Interactive: spawn ck init with inherited stdio
-			const args = ["init"];
-			if (selection.isGlobal) args.push("-g");
-			if (selection.kit) args.push("--kit", selection.kit);
-			if (forceKitReinstall) args.push("--restore-ck-hooks");
-			if (installModePreference) args.push("--install-mode", installModePreference);
-			args.push("--install-skills");
-			if (useBeta) args.push("--beta");
+			const args = buildInitArgs({
+				isGlobal: selection.isGlobal,
+				kit: selection.kit,
+				beta: useBeta,
+				restoreCkHooks: forceKitReinstall,
+				installMode: installModePreference,
+			});
 
 			const displayCmd = `ck ${args.join(" ")}`;
 			logger.info(`Running: ${displayCmd}`);
