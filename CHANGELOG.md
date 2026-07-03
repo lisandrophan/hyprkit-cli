@@ -1,3 +1,9 @@
+## [4.5.2](https://github.com/mrgoonie/claudekit-cli/compare/v4.5.1...v4.5.2) (2026-07-03)
+
+### 🔥 Hotfixes
+
+* keep dashboard global migrate source scoped ([a90ff52](https://github.com/mrgoonie/claudekit-cli/commit/a90ff52d05dd5b98c38a8f3778d5388a385aa949))
+
 ## [4.5.1](https://github.com/mrgoonie/claudekit-cli/compare/v4.5.0...v4.5.1) (2026-07-03)
 
 ### 🔥 Hotfixes
