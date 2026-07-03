@@ -997,6 +997,137 @@ describe.serial("migration reconcile route", () => {
 		expect(emptyLike.status).toBe(200);
 	});
 
+	test("reconcile uses global Claude source discovery when global migration is requested", async () => {
+		getCommandSourcePathMock.mockReturnValueOnce("/tmp/global-claude/commands");
+		discoverCommandsMock.mockResolvedValueOnce([
+			{
+				name: "ck/build",
+				displayName: "CK Build",
+				description: "",
+				type: "command",
+				sourcePath: "/tmp/global-claude/commands/ck/build.md",
+				frontmatter: {},
+				body: "# CK Build\n",
+			},
+		]);
+
+		const res = await testFetch(
+			`${ctx.baseUrl}/api/migrate/reconcile?providers=opencode&agents=false&commands=true&skills=false&config=false&rules=false&hooks=false&global=true`,
+		);
+
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			plan: { meta: { global?: boolean; items: { commands: string[] } } };
+		};
+		expect(getCommandSourcePathMock).toHaveBeenCalledWith(true);
+		expect(body.plan.meta.global).toBe(true);
+		expect(body.plan.meta.items.commands).toEqual(["ck/build"]);
+	});
+
+	test("install discovery uses global Claude source discovery when global migration is requested", async () => {
+		getCommandSourcePathMock.mockReturnValueOnce("/tmp/global-claude/commands");
+		discoverCommandsMock.mockResolvedValueOnce([
+			{
+				name: "ck/build",
+				displayName: "CK Build",
+				description: "",
+				type: "command",
+				sourcePath: "/tmp/global-claude/commands/ck/build.md",
+				frontmatter: {},
+				body: "# CK Build\n",
+			},
+		]);
+
+		const res = await testFetch(
+			`${ctx.baseUrl}/api/migrate/install-discovery?providers=opencode&agents=false&commands=true&skills=false&config=false&rules=false&hooks=false&global=true`,
+		);
+
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			candidates: Array<{ item: string; sourcePath: string; global: boolean }>;
+		};
+		expect(getCommandSourcePathMock).toHaveBeenCalledWith(true);
+		expect(body.candidates).toEqual([
+			expect.objectContaining({
+				item: "ck/build",
+				sourcePath: "/tmp/global-claude/commands/ck/build.md",
+				global: true,
+			}),
+		]);
+	});
+
+	test("plan execution re-discovers global Claude source when plan meta is global", async () => {
+		getCommandSourcePathMock.mockReturnValueOnce("/tmp/global-claude/commands");
+		discoverCommandsMock.mockResolvedValueOnce([
+			{
+				name: "ck/build",
+				displayName: "CK Build",
+				description: "",
+				type: "command",
+				sourcePath: "/tmp/global-claude/commands/ck/build.md",
+				frontmatter: {},
+				body: "# CK Build\n",
+			},
+		]);
+		installPortableItemsMock.mockImplementationOnce(async (items, providers, type, options) => {
+			expect(type).toBe("command");
+			expect(options).toEqual({ global: true });
+			expect(items.map((item) => (item as { name: string }).name)).toEqual(["ck/build"]);
+			return [
+				{
+					provider: providers[0] as PortableInstallBatch[number]["provider"],
+					providerDisplayName: "OpenCode",
+					success: true,
+					path: "/tmp/opencode/commands/ck/build.md",
+					itemName: "ck/build",
+				},
+			];
+		});
+
+		const plan = {
+			actions: [
+				{
+					action: "install",
+					item: "ck/build",
+					type: "command",
+					provider: "opencode",
+					global: true,
+					targetPath: "/tmp/opencode/commands/ck/build.md",
+					reason: "Install global command",
+				},
+			],
+			summary: { install: 1, update: 0, skip: 0, conflict: 0, delete: 0 },
+			hasConflicts: false,
+			meta: {
+				include: {
+					agents: false,
+					commands: true,
+					skills: false,
+					config: false,
+					rules: false,
+					hooks: false,
+				},
+				providers: ["opencode"],
+				global: true,
+				items: { commands: ["ck/build"] },
+			},
+		};
+
+		const res = await testFetch(`${ctx.baseUrl}/api/migrate/execute`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ plan, resolutions: {} }),
+		});
+
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			counts: { installed: number; skipped: number; failed: number };
+		};
+		expect(getCommandSourcePathMock).toHaveBeenCalledWith(true);
+		expect(installPortableItemsMock).toHaveBeenCalledTimes(1);
+		expect(body.counts).toEqual({ installed: 1, skipped: 0, failed: 0 });
+	});
+
 	test("reconcile plan keeps project-scoped Codex command actions project-local", async () => {
 		getCommandSourcePathMock.mockReturnValueOnce("/tmp/commands");
 		discoverCommandsMock.mockResolvedValueOnce([
