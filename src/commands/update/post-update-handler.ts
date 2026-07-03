@@ -11,6 +11,7 @@ import { readdir } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { cleanupStaleCodexConfigEntries } from "@/commands/portable/codex-toml-installer.js";
 import { CkConfigManager } from "@/domains/config/ck-config-manager.js";
 import {
 	countMissingHookFileReferences,
@@ -32,6 +33,7 @@ import { versionsMatch } from "@/domains/versioning/checking/version-utils.js";
 import { getClaudeKitSetup } from "@/services/file-operations/claudekit-scanner.js";
 import { parseJsonContent } from "@/shared/json-content.js";
 import { logger } from "@/shared/logger.js";
+import { PathResolver } from "@/shared/path-resolver.js";
 import { confirm, isCancel, log, spinner } from "@/shared/safe-prompts.js";
 import {
 	AVAILABLE_KITS,
@@ -423,6 +425,7 @@ export interface PromptKitUpdateDeps {
 	detectInstallModeFn?: (claudeDir: string) => InstallModeReport;
 	hasTrackedPluginSuppliedLegacyFilesFn?: (claudeDir: string) => boolean;
 	shouldRefreshCodexPluginFn?: (options?: CodexPluginStateOptions) => Promise<boolean>;
+	cleanupStaleCodexConfigEntriesFn?: typeof cleanupStaleCodexConfigEntries;
 }
 
 async function findMissingHookDependencies(claudeDir: string): Promise<string[]> {
@@ -482,6 +485,8 @@ export async function promptKitUpdate(
 		const shouldRefreshCodexPluginFn =
 			deps?.shouldRefreshCodexPluginFn ??
 			((options?: CodexPluginStateOptions) => shouldRefreshCodexPlugin(undefined, options));
+		const cleanupStaleCodexConfigEntriesFn =
+			deps?.cleanupStaleCodexConfigEntriesFn ?? cleanupStaleCodexConfigEntries;
 		const setup = await getSetupFn();
 		const hasLocal = !!setup.project.metadata;
 		const hasGlobal = !!setup.global.metadata;
@@ -617,14 +622,27 @@ export async function promptKitUpdate(
 							forceKitReinstall = true;
 						}
 					}
-					if (
-						installModePreference !== "legacy" &&
-						(await shouldRefreshCodexPluginFn({ expectedVersion: kitVersion }))
-					) {
-						logger.warning(
-							"Detected Codex ClaudeKit plugin state requiring refresh; reinstalling global Engineer content",
-						);
-						forceKitReinstall = true;
+					if (installModePreference !== "legacy") {
+						try {
+							await cleanupStaleCodexConfigEntriesFn({ global: true, provider: "codex" });
+						} catch (error) {
+							logger.verbose(
+								`Codex config self-heal skipped: ${
+									error instanceof Error ? error.message : "unknown"
+								}`,
+							);
+						}
+						if (
+							await shouldRefreshCodexPluginFn({
+								expectedVersion: kitVersion,
+								expectedSource: join(PathResolver.getCacheDir(true), "ck-plugin-source", ".claude"),
+							})
+						) {
+							logger.warning(
+								"Detected Codex ClaudeKit plugin state requiring refresh; reinstalling global Engineer content",
+							);
+							forceKitReinstall = true;
+						}
 					}
 				}
 			} catch (error) {

@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { existsSync, realpathSync } from "node:fs";
+import { normalize, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
 	CK_MARKETPLACE_NAME,
@@ -249,7 +251,11 @@ function classifyCodexPluginEntry(
 	if (entry.marketplace && entry.marketplace !== expectedMarketplace) {
 		return createState("installed-stale-source", entry, options);
 	}
-	if (options.expectedSource && entry.source && entry.source !== options.expectedSource) {
+	if (
+		options.expectedSource &&
+		entry.source &&
+		!pluginSourceMatches(entry.source, options.expectedSource)
+	) {
 		return createState("installed-stale-source", entry, options);
 	}
 	if (
@@ -261,6 +267,28 @@ function classifyCodexPluginEntry(
 	}
 
 	return createState("installed-current", entry, options);
+}
+
+function pluginSourceMatches(actual: string, expected: string): boolean {
+	if (actual === expected) return true;
+
+	const normalizedActual = normalizeLocalSourcePath(actual);
+	const normalizedExpected = normalizeLocalSourcePath(expected);
+	return (
+		normalizedActual !== null &&
+		normalizedExpected !== null &&
+		normalizedActual === normalizedExpected
+	);
+}
+
+function normalizeLocalSourcePath(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return null;
+
+	const resolved = resolve(trimmed);
+	const canonical = existsSync(resolved) ? realpathSync.native(resolved) : resolved;
+	const normalized = normalize(canonical);
+	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 function parseTextPluginList(output: string): CodexPluginListEntry | null {

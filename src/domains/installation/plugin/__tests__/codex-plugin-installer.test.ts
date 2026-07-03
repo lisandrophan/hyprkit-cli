@@ -368,6 +368,39 @@ other@market  installed, enabled
 		});
 	});
 
+	test("treats equivalent local source paths as current", async () => {
+		const installer = new CodexPluginInstaller(async (args) => {
+			if (args.join(" ") === "--version") return ok("codex-cli 0.143.0-alpha.14");
+			if (args.join(" ") === "plugin --help") return ok("plugin marketplace add");
+			if (args.join(" ") === "plugin list --json") {
+				return ok(
+					JSON.stringify({
+						installed: [
+							{
+								pluginId: "ck@claudekit",
+								installed: true,
+								enabled: true,
+								version: "2.20.1-beta.7",
+								marketplace: "claudekit",
+								source: { source: "local", path: "/tmp/ck-plugin-source/.claude" },
+							},
+						],
+					}),
+				);
+			}
+			return fail("unexpected");
+		});
+
+		await expect(
+			detectCodexPluginState(installer, {
+				expectedSource: "/tmp/../tmp/ck-plugin-source/.claude",
+			}),
+		).resolves.toMatchObject({
+			status: "installed-current",
+			shouldRefresh: false,
+		});
+	});
+
 	test("skips Codex plugin removal when Codex has no plugin support", async () => {
 		const calls: string[][] = [];
 		const installer = new CodexPluginInstaller(async (args) => {
