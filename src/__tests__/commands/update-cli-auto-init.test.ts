@@ -182,6 +182,7 @@ describe("promptKitUpdate auto-init behavior", () => {
 			detectInstallModeFn: () => makeInstallModeReport(tempDir, "plugin"),
 			hasTrackedPluginSuppliedLegacyFilesFn: () => false,
 			shouldRefreshCodexPluginFn: async () => false,
+			cleanupStaleCodexConfigEntriesFn: async () => [],
 		};
 		return {
 			deps,
@@ -332,6 +333,31 @@ describe("promptKitUpdate auto-init behavior", () => {
 		expect(capturedSpawnArgs()).toContain("engineer");
 		expect(capturedSpawnArgs()).toContain("--yes");
 		expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
+	});
+
+	test("cleans Codex config before checking stable plugin source (--yes mode)", async () => {
+		const { deps, spawnCount, capturedSpawnArgs } = makeDeps();
+		deps.getLatestReleaseTagFn = async () => "v1.0.0";
+		let cleanupRan = false;
+		let refreshOptions: unknown;
+		deps.cleanupStaleCodexConfigEntriesFn = async () => {
+			cleanupRan = true;
+			return ["fullstack_developer"];
+		};
+		deps.shouldRefreshCodexPluginFn = async (options) => {
+			expect(cleanupRan).toBe(true);
+			refreshOptions = options;
+			return true;
+		};
+
+		await promptKitUpdate(false, true, deps);
+
+		expect(spawnCount()).toBe(1);
+		expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
+		expect(refreshOptions).toMatchObject({
+			expectedVersion: "1.0.0",
+			expectedSource: join(testHome, ".cache", "claude", "ck-plugin-source", ".claude"),
+		});
 	});
 
 	test("reinstalls latest legacy global engineer kit to migrate plugin format (--yes mode)", async () => {
