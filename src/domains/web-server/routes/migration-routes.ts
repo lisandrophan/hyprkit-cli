@@ -694,6 +694,7 @@ function getPlanMeta(plan: z.infer<typeof RECONCILE_PLAN_SCHEMA>): {
 	include?: unknown;
 	providers?: unknown;
 	source?: unknown;
+	global?: unknown;
 	items?: unknown;
 } | null {
 	const rawMeta = (plan as { meta?: unknown }).meta;
@@ -702,6 +703,7 @@ function getPlanMeta(plan: z.infer<typeof RECONCILE_PLAN_SCHEMA>): {
 		include?: unknown;
 		providers?: unknown;
 		source?: unknown;
+		global?: unknown;
 		items?: unknown;
 	};
 }
@@ -799,6 +801,17 @@ function getConfigSourceFromPlan(plan: z.infer<typeof RECONCILE_PLAN_SCHEMA>): s
 	}
 	const parsed = parseConfigSource(meta.source);
 	return parsed.ok ? parsed.value : undefined;
+}
+
+function getGlobalOnlyFromPlan(plan: z.infer<typeof RECONCILE_PLAN_SCHEMA>): boolean {
+	const meta = getPlanMeta(plan);
+	const parsedGlobal = parseBooleanLike(meta?.global);
+	if (parsedGlobal.ok && parsedGlobal.value !== undefined) {
+		return parsedGlobal.value;
+	}
+
+	const actionScopes = new Set(plan.actions.map((action) => action.global));
+	return actionScopes.size === 1 && actionScopes.has(true);
 }
 
 function getPlanItemsByType(
@@ -1335,7 +1348,7 @@ export function registerMigrationRoutes(app: Express, deps?: MigrationRouteDeps)
 			}
 
 			// 1. Discover source items
-			const discovered = await discoverMigrationItems(include, configSource);
+			const discovered = await discoverMigrationItems(include, configSource, globalParam);
 
 			// 2. Build source item states with checksums
 			const sourceItems: SourceItemState[] = [];
@@ -1511,6 +1524,7 @@ export function registerMigrationRoutes(app: Express, deps?: MigrationRouteDeps)
 					include,
 					providers: selectedProviders,
 					source: configSource,
+					global: globalParam,
 					mode: reconcileMode,
 					items: {
 						agents: discovered.agents.map((item) => item.name),
@@ -1579,7 +1593,7 @@ export function registerMigrationRoutes(app: Express, deps?: MigrationRouteDeps)
 			const configSource = sourceParsed.value;
 
 			// Discover source items (no reconcile, no checksum computation)
-			const discovered = await discoverMigrationItems(include, configSource);
+			const discovered = await discoverMigrationItems(include, configSource, globalParam);
 
 			// Cross-reference registry for alreadyInstalled detection
 			const registry = await registryDeps.readPortableRegistry();
@@ -1789,7 +1803,12 @@ export function registerMigrationRoutes(app: Express, deps?: MigrationRouteDeps)
 				// Re-discover source items to get file content for installation
 				const includeFromPlan = getIncludeFromPlan(plan);
 				const configSourceFromPlan = getConfigSourceFromPlan(plan);
-				const discovered = await discoverMigrationItems(includeFromPlan, configSourceFromPlan);
+				const globalOnlyFromPlan = getGlobalOnlyFromPlan(plan);
+				const discovered = await discoverMigrationItems(
+					includeFromPlan,
+					configSourceFromPlan,
+					globalOnlyFromPlan,
+				);
 
 				const agentByName = new Map(discovered.agents.map((item) => [item.name, item]));
 				const commandByName = new Map(discovered.commands.map((item) => [item.name, item]));
@@ -2098,9 +2117,9 @@ export function registerMigrationRoutes(app: Express, deps?: MigrationRouteDeps)
 					}
 				}
 				try {
-					const agentSrc = getAgentSourcePath();
-					const cmdSrc = getCommandSourcePath();
-					const skillSrc = getSkillSourcePath();
+					const agentSrc = getAgentSourcePath(globalOnlyFromPlan);
+					const cmdSrc = getCommandSourcePath(globalOnlyFromPlan);
+					const skillSrc = getSkillSourcePath(globalOnlyFromPlan);
 					const kitRoot =
 						(agentSrc ? resolve(agentSrc, "..") : null) ??
 						(cmdSrc ? resolve(cmdSrc, "..") : null) ??
