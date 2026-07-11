@@ -74,6 +74,9 @@ export class PluginInstallModeChecker implements Checker {
 				preference === "plugin"
 					? `Install mode: mixed (normal copy + plugin both present). Run \`ck init -g --kit engineer --install-mode plugin\` to repair plugin mode.${suffix}`
 					: `Install mode: mixed (normal copy + plugin both present). Run \`ck init -g --kit engineer --install-mode legacy\` to keep normal skills and remove CK-owned plugin state.${suffix}`;
+		} else if (codexState.status === "unknown") {
+			status = "warn";
+			message = `Install mode: ${displayedMode}; Codex plugin inspection failed. Run \`ck doctor --check-only\` again or verify with \`codex plugin list\`.${suffix}`;
 		} else if (
 			preference === "legacy" &&
 			(r.plugin.installed || r.plugin.staleCache || codexState.installed)
@@ -89,9 +92,9 @@ export class PluginInstallModeChecker implements Checker {
 		) {
 			status = "warn";
 			message = `Install mode: ${displayedMode}, but preference is plugin. Run \`ck init -g --kit engineer --install-mode plugin\`.${suffix}`;
-		} else if (codexState.shouldRefresh && preference !== "legacy") {
+		} else if (preference === "plugin" && isUnhealthyCodexPluginState(codexState)) {
 			status = "warn";
-			message = `Install mode: ${displayedMode}; Codex plugin requires refresh. Run \`ck update\`.${suffix}`;
+			message = `Install mode: ${displayedMode}; Codex plugin requires repair. Run \`ck init -g --kit engineer --install-mode plugin\`.${suffix}`;
 		} else if (r.mode === "fresh") {
 			status = "info";
 			message = `Install mode: fresh (ClaudeKit Engineer not installed). Run \`ck init\` to install.${suffix}`;
@@ -145,8 +148,19 @@ function expectedCodexPluginOptions(claudeDir: string): CodexPluginStateOptions 
 	return {
 		expectedVersion: readEngineerKitVersion(claudeDir),
 		expectedMarketplace: "claudekit",
-		expectedSource: join(PathResolver.getCacheDir(true), "ck-plugin-source"),
+		expectedSource: join(PathResolver.getCacheDir(true), "ck-plugin-source", ".claude"),
 	};
+}
+
+function isUnhealthyCodexPluginState(state: CodexPluginState): boolean {
+	return (
+		state.status === "unknown" ||
+		state.status === "missing" ||
+		state.status === "disabled" ||
+		state.status === "installed-stale-version" ||
+		state.status === "installed-stale-source" ||
+		state.shouldRefresh
+	);
 }
 
 function readEngineerKitVersion(claudeDir: string): string | null {

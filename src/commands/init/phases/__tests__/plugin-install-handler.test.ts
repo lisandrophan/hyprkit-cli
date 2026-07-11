@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync, renameSync } from "node:fs";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import {
-	handlePluginInstall,
+	type PluginInstallDeps,
+	handlePluginInstall as handlePluginInstallUnsafe,
 	stagePluginSource,
 } from "@/commands/init/phases/plugin-install-handler.js";
 import type { InitContext } from "@/commands/init/types.js";
@@ -36,18 +37,86 @@ const failedInstallResult: MigrateResult = {
 	receiptPath: null,
 	error: "plugin did not verify after install",
 };
+const noClaudePluginResult: UninstallPluginResult = {
+	uninstalled: false,
+	staleCacheRemoved: false,
+	pluginStillInstalled: false,
+};
+const noCodexPluginResult: RemoveCodexPluginResult = {
+	removed: false,
+	marketplaceRemoved: false,
+	pluginStillInstalled: false,
+};
+
+function handlePluginInstall(
+	ctx: InitContext,
+	overrides: PluginInstallDeps = {},
+): Promise<InitContext> {
+	return handlePluginInstallUnsafe(ctx, {
+		migrate: async () => okResult,
+		installCodex: async () => okCodexResult,
+		uninstallClaudePlugin: async () => noClaudePluginResult,
+		removeCodexPlugin: async () => noCodexPluginResult,
+		persistPreference: async () => {},
+		...overrides,
+	});
+}
 
 describe("handlePluginInstall (init Phase 7.5)", () => {
 	let root: string;
 	let extractDir: string;
 	let claudeDir: string;
 	let stageBase: string;
+	let providerRunnerMarker: string;
+	let originalEnvironment: Record<string, string | undefined>;
 
 	beforeEach(async () => {
 		root = join(tmpdir(), `ck-pih-${Date.now()}-${Math.round(performance.now())}`);
 		extractDir = join(root, "extract");
 		claudeDir = join(root, "claude");
 		stageBase = join(root, "stage");
+		providerRunnerMarker = join(root, "provider-runner-reached");
+		const providerBinDir = join(root, "provider-bin");
+		const isolatedHome = join(root, "guard-home");
+		const isolatedCodexHome = join(root, "guard-codex-home");
+		const isolatedClaudeHome = join(root, "guard-claude-home");
+		originalEnvironment = Object.fromEntries(
+			[
+				"HOME",
+				"CODEX_HOME",
+				"USERPROFILE",
+				"APPDATA",
+				"LOCALAPPDATA",
+				"CLAUDE_CONFIG_DIR",
+				"PATH",
+				"CK_TEST_PROVIDER_MARKER",
+			].map((name) => [name, process.env[name]]),
+		);
+		Object.assign(process.env, {
+			HOME: isolatedHome,
+			CODEX_HOME: isolatedCodexHome,
+			USERPROFILE: isolatedHome,
+			APPDATA: join(isolatedHome, "AppData", "Roaming"),
+			LOCALAPPDATA: join(isolatedHome, "AppData", "Local"),
+			CLAUDE_CONFIG_DIR: isolatedClaudeHome,
+			CK_TEST_PROVIDER_MARKER: providerRunnerMarker,
+			PATH: `${providerBinDir}${delimiter}${process.env.PATH ?? ""}`,
+		});
+		await mkdir(providerBinDir, { recursive: true });
+		for (const executable of ["claude", "codex"]) {
+			const shim = join(providerBinDir, executable);
+			await writeFile(
+				shim,
+				'#!/bin/sh\nprintf "provider-runner-reached" > "$CK_TEST_PROVIDER_MARKER"\nexit 97\n',
+				"utf-8",
+			);
+			await chmod(shim, 0o755);
+			await writeFile(
+				join(providerBinDir, `${executable}.cmd`),
+				'@echo provider-runner-reached>"%CK_TEST_PROVIDER_MARKER%"\r\n@exit /b 97\r\n',
+				"utf-8",
+			);
+		}
 		await mkdir(join(extractDir, ".claude", ".claude-plugin"), { recursive: true });
 		await mkdir(join(extractDir, ".claude", "skills", "cook"), { recursive: true });
 		await writeFile(
@@ -58,7 +127,15 @@ describe("handlePluginInstall (init Phase 7.5)", () => {
 		await mkdir(claudeDir, { recursive: true });
 	});
 	afterEach(async () => {
-		await rm(root, { recursive: true, force: true });
+		try {
+			expect(existsSync(providerRunnerMarker)).toBe(false);
+		} finally {
+			for (const [name, value] of Object.entries(originalEnvironment)) {
+				if (value === undefined) delete process.env[name];
+				else process.env[name] = value;
+			}
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 
 	function ctxOf(
@@ -219,6 +296,114 @@ describe("handlePluginInstall (init Phase 7.5)", () => {
 		).rejects.toThrow("Codex plugin install failed");
 	});
 
+	test("Codex preparation failure leaves Claude legacy cleanup untouched", async () => {
+		let claudeMigrationCalled = false;
+		await expect(
+			handlePluginInstall(ctxOf({ installMode: "plugin" }), {
+				installCodex: async () => ({
+					action: "install-failed",
+					pluginVerified: false,
+					error: "marketplace replacement failed",
+				}),
+				migrate: async () => {
+					claudeMigrationCalled = true;
+					return okResult;
+				},
+				stageBaseDir: stageBase,
+			}),
+		).rejects.toThrow("Codex plugin install failed");
+		expect(claudeMigrationCalled).toBe(false);
+	});
+
+	test("Codex failure after stage activation restores the previous stable source", async () => {
+		await writeStableStage(stageBase);
+
+		await expect(
+			handlePluginInstall(ctxOf({ installMode: "plugin" }), {
+				installCodex: async () => ({
+					action: "install-failed",
+					pluginVerified: false,
+					error: "injected Codex failure",
+				}),
+				stageBaseDir: stageBase,
+			}),
+		).rejects.toThrow("Codex plugin install failed");
+
+		expect(readFileSync(join(stageBase, "last-known-good.txt"), "utf-8")).toBe("stable");
+	});
+
+	test("Claude failure after stage activation restores the previous stable source", async () => {
+		await writeStableStage(stageBase);
+
+		await expect(
+			handlePluginInstall(ctxOf({ installMode: "plugin" }), {
+				installCodex: async () => okCodexResult,
+				migrate: async () => failedInstallResult,
+				stageBaseDir: stageBase,
+			}),
+		).rejects.toThrow("Claude plugin install failed");
+
+		expect(readFileSync(join(stageBase, "last-known-good.txt"), "utf-8")).toBe("stable");
+	});
+
+	test("Claude failure restores stage before rolling back Codex preparation", async () => {
+		await writeStableStage(stageBase);
+		let codexCommitted = false;
+		let codexRolledBack = false;
+
+		await expect(
+			handlePluginInstall(ctxOf({ installMode: "plugin" }), {
+				prepareCodex: async () => ({
+					result: okCodexResult,
+					commit: () => {
+						codexCommitted = true;
+					},
+					rollback: async () => {
+						codexRolledBack = true;
+						expect(readFileSync(join(stageBase, "last-known-good.txt"), "utf-8")).toBe("stable");
+						return { ok: true, detail: "restored Codex" };
+					},
+				}),
+				migrate: async () => failedInstallResult,
+				stageBaseDir: stageBase,
+			}),
+		).rejects.toThrow("Claude plugin install failed");
+
+		expect(codexRolledBack).toBe(true);
+		expect(codexCommitted).toBe(false);
+	});
+
+	test("preference persistence failure happens before Claude migration and restores metadata", async () => {
+		await writeStableStage(stageBase);
+		const metadataPath = join(claudeDir, "metadata.json");
+		const originalMetadata = '{"kits":{"engineer":{"installModePreference":"legacy"}}}\n';
+		await writeFile(metadataPath, originalMetadata, "utf-8");
+		let claudeMigrationCalled = false;
+
+		await expect(
+			handlePluginInstall(ctxOf({ installMode: "plugin" }), {
+				prepareCodex: async () => ({
+					result: okCodexResult,
+					commit: () => {},
+					rollback: async () => ({ ok: true, detail: "restored Codex" }),
+				}),
+				persistPreference: async () => {
+					await writeFile(metadataPath, '{"partial":true}\n', "utf-8");
+					throw new Error("disk full");
+				},
+				migrate: async () => {
+					claudeMigrationCalled = true;
+					return okResult;
+				},
+				stageBaseDir: stageBase,
+			}),
+		).rejects.toThrow("disk full");
+
+		expect(claudeMigrationCalled).toBe(false);
+		expect(readFileSync(metadataPath, "utf-8")).toBe(originalMetadata);
+		expect(readFileSync(join(stageBase, "last-known-good.txt"), "utf-8")).toBe("stable");
+	});
+
 	test("explicit legacy mode removes plugin state and skips plugin migration", async () => {
 		let migrated = false;
 		let codexInstalled = false;
@@ -282,6 +467,36 @@ describe("handlePluginInstall (init Phase 7.5)", () => {
 		).rejects.toThrow("Codex plugin cleanup failed");
 
 		expect(existsSync(stageBase)).toBe(false);
+	});
+
+	test("explicit legacy mode fails on error-only provider cleanup results", async () => {
+		await expect(
+			handlePluginInstall(ctxOf({ installMode: "legacy" }), {
+				uninstallClaudePlugin: async () => ({
+					uninstalled: false,
+					staleCacheRemoved: false,
+					pluginStillInstalled: false,
+					error: "Claude marketplace removal failed",
+				}),
+				removeCodexPlugin: async () => ({
+					removed: false,
+					marketplaceRemoved: false,
+					pluginStillInstalled: false,
+					error: "Codex unavailable; absence cannot be verified",
+				}),
+			}),
+		).rejects.toThrow("Claude marketplace removal failed");
+		await expect(
+			handlePluginInstall(ctxOf({ installMode: "legacy" }), {
+				uninstallClaudePlugin: async () => noClaudePluginResult,
+				removeCodexPlugin: async () => ({
+					removed: false,
+					marketplaceRemoved: false,
+					pluginStillInstalled: false,
+					error: "Codex unavailable; absence cannot be verified",
+				}),
+			}),
+		).rejects.toThrow("Codex unavailable; absence cannot be verified");
 	});
 
 	test("explicit legacy mode fails when Claude plugin cleanup does not verify", async () => {
@@ -388,7 +603,90 @@ describe("stagePluginSource", () => {
 		expect(codexMarketplace.plugins[0].policy.installation).toBe("AVAILABLE");
 	});
 
+	test("preserves the last-known-good stage when payload copy fails", async () => {
+		const base = join(root, "stage");
+		await writeStableStage(base);
+		expect(() =>
+			stagePluginSource(join(root, "extract"), base, {
+				transactionId: "copy-failure",
+				copyDirectory: () => {
+					throw new Error("copy failed");
+				},
+			}),
+		).toThrow("copy failed");
+		expect(readFileSync(join(base, "last-known-good.txt"), "utf-8")).toBe("stable");
+		expectTransactionResidueAbsent(base, "copy-failure");
+	});
+
+	test("preserves the last-known-good stage when validation fails", async () => {
+		const base = join(root, "stage");
+		await writeStableStage(base);
+		expect(() =>
+			stagePluginSource(join(root, "extract"), base, {
+				transactionId: "validation-failure",
+				validateSource: () => {
+					throw new Error("validation failed");
+				},
+			}),
+		).toThrow("validation failed");
+		expect(readFileSync(join(base, "last-known-good.txt"), "utf-8")).toBe("stable");
+		expectTransactionResidueAbsent(base, "validation-failure");
+	});
+
+	test("restores the last-known-good stage when the atomic swap fails", async () => {
+		const base = join(root, "stage");
+		const temporary = `${base}.tmp-swap-failure`;
+		await writeStableStage(base);
+		expect(() =>
+			stagePluginSource(join(root, "extract"), base, {
+				transactionId: "swap-failure",
+				renameDirectory: (source, target) => {
+					if (source === temporary) throw new Error("swap failed");
+					renameSync(source, target);
+				},
+			}),
+		).toThrow("swap failed");
+		expect(readFileSync(join(base, "last-known-good.txt"), "utf-8")).toBe("stable");
+		expectTransactionResidueAbsent(base, "swap-failure");
+	});
+
+	test("restores the last-known-good stage when a completed swap reports failure", async () => {
+		const base = join(root, "stage");
+		const temporary = `${base}.tmp-ambiguous-swap`;
+		await writeStableStage(base);
+		expect(() =>
+			stagePluginSource(join(root, "extract"), base, {
+				transactionId: "ambiguous-swap",
+				renameDirectory: (source, target) => {
+					renameSync(source, target);
+					if (source === temporary) throw new Error("swap outcome unknown");
+				},
+			}),
+		).toThrow("swap outcome unknown");
+		expect(readFileSync(join(base, "last-known-good.txt"), "utf-8")).toBe("stable");
+		expectTransactionResidueAbsent(base, "ambiguous-swap");
+	});
+
+	test("replaces the stable source idempotently without transaction residue", () => {
+		const base = join(root, "stage");
+		stagePluginSource(join(root, "extract"), base, { transactionId: "first" });
+		stagePluginSource(join(root, "extract"), base, { transactionId: "second" });
+		expect(existsSync(join(base, ".claude", ".claude-plugin", "plugin.json"))).toBe(true);
+		expectTransactionResidueAbsent(base, "first");
+		expectTransactionResidueAbsent(base, "second");
+	});
+
 	test("throws when archive has no .claude payload", () => {
 		expect(() => stagePluginSource(join(root, "nonexistent"), join(root, "stage2"))).toThrow();
 	});
 });
+
+async function writeStableStage(base: string): Promise<void> {
+	await mkdir(base, { recursive: true });
+	await writeFile(join(base, "last-known-good.txt"), "stable", "utf-8");
+}
+
+function expectTransactionResidueAbsent(base: string, transactionId: string): void {
+	expect(existsSync(`${base}.tmp-${transactionId}`)).toBe(false);
+	expect(existsSync(`${base}.backup-${transactionId}`)).toBe(false);
+}

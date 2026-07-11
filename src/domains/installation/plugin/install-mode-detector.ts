@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { PathResolver } from "@/shared/path-resolver.js";
 import { compareVersions } from "compare-versions";
+import { collectEngineerHistoricalFiles } from "./historical-metadata-files.js";
 
 /**
  * Install-mode detection for the ClaudeKit Engineer kit.
@@ -253,7 +254,7 @@ export function hasTrackedPluginSuppliedLegacyFiles(
 	const metadata = readJsonSafe(join(claudeDir, "metadata.json"));
 	if (!isRecord(metadata)) return false;
 
-	for (const file of collectTrackedFiles(metadata)) {
+	for (const file of collectEngineerHistoricalFiles(metadata)) {
 		const resolvedPath = resolveSafePluginSuppliedLegacyPath(claudeDir, file.path);
 		if (!resolvedPath || !existsSync(resolvedPath)) continue;
 		if (file.ownership === "user" && !checksumMatches(resolvedPath, file.checksum)) continue;
@@ -261,38 +262,6 @@ export function hasTrackedPluginSuppliedLegacyFiles(
 	}
 
 	return false;
-}
-
-interface TrackedFile {
-	path: string;
-	ownership: "ck" | "ck-modified" | "user";
-	checksum?: string;
-}
-
-function collectTrackedFiles(metadata: Record<string, unknown>): TrackedFile[] {
-	const tracked: TrackedFile[] = [];
-	const push = (files: unknown) => {
-		if (!Array.isArray(files)) return;
-		for (const file of files) {
-			if (!isRecord(file) || typeof file.path !== "string") continue;
-			const ownership =
-				file.ownership === "user" || file.ownership === "ck-modified" ? file.ownership : "ck";
-			tracked.push({
-				path: file.path,
-				ownership,
-				checksum: typeof file.checksum === "string" ? file.checksum : undefined,
-			});
-		}
-	};
-
-	if (isRecord(metadata.kits)) {
-		const engineer = metadata.kits[ENGINEER_KIT_KEY];
-		if (isRecord(engineer)) push(engineer.files);
-	} else {
-		push(metadata.files);
-	}
-
-	return tracked;
 }
 
 function resolveSafePluginSuppliedLegacyPath(claudeDir: string, pathValue: string): string | null {

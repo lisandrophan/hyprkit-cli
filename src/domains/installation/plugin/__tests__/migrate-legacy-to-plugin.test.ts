@@ -74,9 +74,18 @@ describe("migrateLegacyToPlugin (orchestration)", () => {
 		writeFile(join(claudeDir, "metadata.json"), JSON.stringify(obj), "utf-8");
 	const writeSettings = (enabledPlugins: Record<string, boolean>) =>
 		writeFile(join(claudeDir, "settings.json"), JSON.stringify({ enabledPlugins }), "utf-8");
+	const writeMarketplace = async (source = "/src") => {
+		await mkdir(join(claudeDir, "plugins"), { recursive: true });
+		await writeFile(
+			join(claudeDir, "plugins", "known_marketplaces.json"),
+			JSON.stringify({ claudekit: { installLocation: source } }),
+			"utf-8",
+		);
+	};
 
 	test("already plugin -> noop, no install calls", async () => {
 		await writeSettings({ "ck@claudekit": true });
+		await writeMarketplace();
 		const { installer, calls } = fakeInstaller();
 		let removerCalled = false;
 		const r = await migrateLegacyToPlugin({
@@ -98,6 +107,7 @@ describe("migrateLegacyToPlugin (orchestration)", () => {
 		await mkdir(join(claudeDir, "hooks"), { recursive: true });
 		await writeFile(join(claudeDir, "hooks", "session-init.cjs"), "runtime hook", "utf-8");
 		await writeSettings({ "ck@claudekit": true });
+		await writeMarketplace();
 		await writeMetadata({
 			kits: {
 				engineer: {
@@ -143,6 +153,132 @@ describe("migrateLegacyToPlugin (orchestration)", () => {
 		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
 		await writeFile(join(claudeDir, "skills", "cook", "SKILL.md"), "plugin materialized", "utf-8");
 		expect(detectInstallMode(claudeDir).mode).toBe("plugin");
+	});
+
+	test("plugin-only disabled registration is enabled and refreshed", async () => {
+		await writeSettings({ "ck@claudekit": false });
+		await writeMarketplace();
+		const { installer, calls } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/src",
+			claudeDir,
+			installer,
+			now: TS,
+		});
+
+		expect(result.pluginVerified).toBe(true);
+		expect(calls).toContainEqual(["plugin", "enable", "ck@claudekit"]);
+		expect(calls).toContainEqual(["plugin", "update", "ck@claudekit"]);
+	});
+
+	test("plugin-only stale marketplace source is refreshed", async () => {
+		await writeSettings({ "ck@claudekit": true });
+		await writeMarketplace("/old-source");
+		const { installer, calls } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/src",
+			claudeDir,
+			installer,
+			now: TS,
+		});
+
+		expect(result.pluginVerified).toBe(true);
+		expect(calls).toContainEqual(["plugin", "marketplace", "remove", "claudekit"]);
+		expect(calls).toContainEqual(["plugin", "marketplace", "add", "/src"]);
+		expect(calls).toContainEqual(["plugin", "update", "ck@claudekit"]);
+	});
+
+	test("plugin-only stale version is refreshed from the staged manifest", async () => {
+		const stagedSource = join(claudeDir, "staged-source");
+		await mkdir(join(stagedSource, ".claude", ".claude-plugin"), { recursive: true });
+		await writeFile(
+			join(stagedSource, ".claude", ".claude-plugin", "plugin.json"),
+			JSON.stringify({ name: "ck", version: "2.20.1" }),
+			"utf-8",
+		);
+		await mkdir(join(claudeDir, "plugins", "cache", "claudekit", "ck", "2.19.0"), {
+			recursive: true,
+		});
+		await writeSettings({ "ck@claudekit": true });
+		await writeMarketplace(stagedSource);
+		const { installer, calls } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: stagedSource,
+			claudeDir,
+			installer,
+			now: TS,
+		});
+
+		expect(result.pluginVerified).toBe(true);
+		expect(calls).toContainEqual(["plugin", "update", "ck@claudekit"]);
+	});
+
+	test("malformed Claude marketplace replacement failure restores registration bytes", async () => {
+		await writeSettings({ "ck@claudekit": true });
+		await mkdir(join(claudeDir, "plugins"), { recursive: true });
+		const registryPath = join(claudeDir, "plugins", "known_marketplaces.json");
+		await writeFile(registryPath, "{malformed", "utf-8");
+		const { installer, calls } = fakeInstaller({
+			marketplaceAddOk: false,
+			marketplaceUpdateOk: false,
+		});
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/src",
+			claudeDir,
+			installer,
+			now: TS,
+		});
+
+		expect(result.action).toBe("install-failed");
+		expect(readFileSync(registryPath, "utf-8")).toBe("{malformed");
+		expect(calls).toContainEqual(["plugin", "marketplace", "remove", "claudekit"]);
+	});
+
+	test("recovers malformed Claude marketplace registration to the staged source", async () => {
+		await writeSettings({ "ck@claudekit": true });
+		await mkdir(join(claudeDir, "plugins"), { recursive: true });
+		const registryPath = join(claudeDir, "plugins", "known_marketplaces.json");
+		await writeFile(registryPath, "{malformed", "utf-8");
+		const calls: string[][] = [];
+		const installer = new PluginInstaller(async (args) => {
+			calls.push(args);
+			const command = args.join(" ");
+			if (command === "--version") return ok("2.1.178");
+			if (command === "plugin --help") return ok("Manage marketplaces");
+			if (command === "plugin marketplace remove claudekit") {
+				await writeFile(registryPath, "{}\n", "utf-8");
+				return ok("");
+			}
+			if (command === "plugin marketplace add /src") {
+				await writeFile(
+					registryPath,
+					JSON.stringify({ claudekit: { installLocation: "/src" } }),
+					"utf-8",
+				);
+				return ok("");
+			}
+			if (command === "plugin update ck@claudekit") return ok("");
+			if (command === "plugin list") return ok("ck@claudekit Status: enabled");
+			return ok("");
+		});
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/src",
+			claudeDir,
+			installer,
+			now: TS,
+		});
+
+		expect(result.pluginVerified).toBe(true);
+		expect(JSON.parse(readFileSync(registryPath, "utf-8"))).toEqual({
+			claudekit: { installLocation: "/src" },
+		});
+		expect(calls).toContainEqual(["plugin", "marketplace", "remove", "claudekit"]);
+		expect(calls).toContainEqual(["plugin", "marketplace", "add", "/src"]);
 	});
 
 	test("cc without plugin support -> skipped (caller falls back to legacy copy)", async () => {
@@ -222,6 +358,70 @@ describe("migrateLegacyToPlugin (orchestration)", () => {
 		const receipt = JSON.parse(readFileSync(r.receiptPath as string, "utf-8"));
 		expect(receipt[0].fromMode).toBe("legacy");
 		expect(receipt[0].toMode).toBe("plugin");
+	});
+
+	test("late receipt failure restores removed legacy files and metadata", async () => {
+		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await writeFile(legacyFile, "legacy skill", "utf-8");
+		const metadata = {
+			kits: {
+				engineer: {
+					version: "2.19.0",
+					installedAt: "x",
+					files: [{ path: "skills/cook/SKILL.md", ownership: "ck" }],
+				},
+			},
+		};
+		await writeMetadata(metadata);
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/staged/kit",
+			claudeDir,
+			installer,
+			now: TS,
+			writeReceiptFn: () => {
+				throw new Error("disk full");
+			},
+		});
+
+		expect(result).toMatchObject({
+			action: "install-failed",
+			pluginVerified: false,
+			error: "plugin migration transaction failed: disk full",
+		});
+		expect(readFileSync(legacyFile, "utf-8")).toBe("legacy skill");
+		expect(JSON.parse(readFileSync(join(claudeDir, "metadata.json"), "utf-8"))).toEqual(metadata);
+		expect(existsSync(join(claudeDir, ".ck-migration-log.json"))).toBe(false);
+	});
+
+	test("deprecated string installedFiles converge without deleting their payload", async () => {
+		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await writeFile(legacyFile, "historical content", "utf-8");
+		await writeMetadata({
+			name: "engineer",
+			version: "2.18.0",
+			installedFiles: ["skills/cook/SKILL.md"],
+		});
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/src",
+			claudeDir,
+			installer,
+			now: TS,
+		});
+
+		expect(result.action).toBe("migrated-from-legacy");
+		expect(existsSync(legacyFile)).toBe(true);
+		const metadata = JSON.parse(readFileSync(join(claudeDir, "metadata.json"), "utf-8"));
+		expect(metadata.installedFiles).toEqual([]);
+		await writeSettings({ "ck@claudekit": true });
+		await writeMarketplace();
+		expect(detectInstallMode(claudeDir).mode).toBe("plugin");
+		expect(detectInstallMode(claudeDir).legacy.installed).toBe(false);
 	});
 
 	test("mixed already-installed plugin refreshes plugin and still cleans legacy skills", async () => {
@@ -319,6 +519,42 @@ describe("defaultLegacyRemover", () => {
 		expect(existsSync(join(claudeDir, "skills", "mine", "SKILL.md"))).toBe(true); // user preserved
 		expect(existsSync(join(backupDir, "skills", "cook", "SKILL.md"))).toBe(true); // backed up
 		expect(existsSync(join(backupDir, "agents", "planner.md"))).toBe(true); // backed up
+	});
+
+	test("legacy root installedFiles are evidence only and never deletion authority", async () => {
+		await writeFile(join(claudeDir, "skills", "cook", "SKILL.md"), "historical", "utf-8");
+		await writeFile(
+			join(claudeDir, "metadata.json"),
+			JSON.stringify({ installedFiles: ["skills/cook/SKILL.md"] }),
+			"utf-8",
+		);
+
+		const removed = defaultLegacyRemover(claudeDir, backupDir);
+
+		expect(removed).toEqual([]);
+		expect(existsSync(join(claudeDir, "skills", "cook", "SKILL.md"))).toBe(true);
+	});
+
+	test("checksum-less records stay while explicitly CK-owned records can be removed", async () => {
+		await writeFile(join(claudeDir, "skills", "cook", "SKILL.md"), "unknown", "utf-8");
+		await mkdir(join(claudeDir, "skills", "safe"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "safe", "SKILL.md"), "safe", "utf-8");
+		await writeFile(
+			join(claudeDir, "metadata.json"),
+			JSON.stringify({
+				files: [
+					{ path: "skills/cook/SKILL.md" },
+					{ path: "skills/safe/SKILL.md", ownership: "ck" },
+				],
+			}),
+			"utf-8",
+		);
+
+		const removed = defaultLegacyRemover(claudeDir, backupDir);
+
+		expect(removed).toEqual(["skills/safe/SKILL.md"]);
+		expect(existsSync(join(claudeDir, "skills", "cook", "SKILL.md"))).toBe(true);
+		expect(existsSync(join(claudeDir, "skills", "safe", "SKILL.md"))).toBe(false);
 	});
 
 	test("removes unmodified plugin-supplied files marked user-owned by manifestless installs", async () => {

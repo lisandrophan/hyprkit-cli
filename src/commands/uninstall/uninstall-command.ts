@@ -4,7 +4,10 @@
  * Main orchestrator for the uninstall command.
  */
 
-import { uninstallEnginePlugin } from "@/domains/installation/plugin/uninstall-plugin.js";
+import {
+	type EngineerProviderCleanupResult,
+	cleanupEngineerProviderPlugins,
+} from "@/domains/installation/plugin/engineer-provider-cleanup.js";
 import { getInstalledKits } from "@/domains/migration/metadata-migration.js";
 import { PromptsManager } from "@/domains/ui/prompts.js";
 import { ManifestWriter } from "@/services/file-operations/manifest-writer.js";
@@ -18,6 +21,23 @@ import { type Installation, detectInstallations } from "./installation-detector.
 import { removeInstallations } from "./removal-handler.js";
 
 const prompts = new PromptsManager();
+
+export interface UninstallCommandDependencies {
+	cleanupEngineerProviderPlugins?: () => Promise<EngineerProviderCleanupResult>;
+}
+
+async function cleanupEngineerProvidersOrThrow(
+	deps: UninstallCommandDependencies,
+): Promise<EngineerProviderCleanupResult> {
+	const cleanupProviders = deps.cleanupEngineerProviderPlugins ?? cleanupEngineerProviderPlugins;
+	const result = await cleanupProviders();
+	if (!result.success) {
+		throw new Error(
+			`Engineer plugin cleanup incomplete: ${result.errors.join("; ") || "verification failed"}`,
+		);
+	}
+	return result;
+}
 
 type UninstallScope = "all" | "local" | "global";
 type KitSelection = KitType | "all";
@@ -169,7 +189,10 @@ async function confirmUninstall(scope: UninstallScope, kitLabel = ""): Promise<b
 	return confirmed === true;
 }
 
-export async function uninstallCommand(options: UninstallCommandOptions): Promise<void> {
+export async function uninstallCommand(
+	options: UninstallCommandOptions,
+	deps: UninstallCommandDependencies = {},
+): Promise<void> {
 	try {
 		await withProcessLock("kit-install", async () => {
 			// 1. Validate options
@@ -180,6 +203,16 @@ export async function uninstallCommand(options: UninstallCommandOptions): Promis
 
 			// 3. Check if any found
 			if (allInstallations.length === 0) {
+				const explicitGlobalEngineerCleanup =
+					(validOptions.global || validOptions.all) &&
+					(validOptions.kit === "engineer" || !validOptions.kit);
+				if (explicitGlobalEngineerCleanup && !validOptions.dryRun) {
+					const pluginResult = await cleanupEngineerProvidersOrThrow(deps);
+					if (pluginResult.changed) {
+						prompts.outro("ClaudeKit Engineer provider plugins removed successfully!");
+						return;
+					}
+				}
 				logger.info("No ClaudeKit installations found.");
 				return;
 			}
@@ -298,7 +331,9 @@ export async function uninstallCommand(options: UninstallCommandOptions): Promis
 					(scope === "global" || scope === "all") &&
 					(kitToRemove === "engineer" || !kitToRemove)
 				) {
-					log.info("A ClaudeKit Engineer plugin install (if present) would also be deregistered.");
+					log.info(
+						"ClaudeKit Engineer plugins in Claude and Codex (if present) would also be removed.",
+					);
 				}
 				prompts.outro("Dry-run complete. No changes were made.");
 				return;
@@ -321,24 +356,19 @@ export async function uninstallCommand(options: UninstallCommandOptions): Promis
 				}
 			}
 
-			// 14. Remove files using manifest
+			// 14. Remove global Engineer provider state before committing file deletion.
+			// A verification failure leaves the copied installation intact and retryable.
+			if ((scope === "global" || scope === "all") && (kitToRemove === "engineer" || !kitToRemove)) {
+				const pluginResult = await cleanupEngineerProvidersOrThrow(deps);
+				if (pluginResult.changed) log.info("Removed ClaudeKit Engineer provider plugins.");
+			}
+
+			// 14.5: remove files using manifest only after provider cleanup verifies.
 			const results = await removeInstallations(installations, {
 				dryRun: false,
 				forceOverwrite: validOptions.forceOverwrite,
 				kit: kitToRemove,
 			});
-
-			// 14.5: also remove the engineer plugin (#691) — non-fatal, no-op if not a plugin install
-			if ((scope === "global" || scope === "all") && (kitToRemove === "engineer" || !kitToRemove)) {
-				try {
-					const pluginResult = await uninstallEnginePlugin();
-					if (pluginResult.uninstalled) {
-						log.info("Removed ClaudeKit Engineer plugin.");
-					}
-				} catch (err) {
-					logger.verbose(`Plugin uninstall skipped: ${(err as Error).message}`);
-				}
-			}
 
 			const hasProtectedFiles = results.some((result) => result.protectedTrackedPaths.length > 0);
 

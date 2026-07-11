@@ -80,6 +80,31 @@ describe("install-mode-detector", () => {
 		expect(detectInstallMode(claudeDir).mode).toBe("legacy");
 	});
 
+	test("legacy: deprecated root installedFiles still triggers convergence", async () => {
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "cook", "SKILL.md"), "# cook\n", "utf-8");
+		await writeMetadata({
+			name: "claudekit-engineer",
+			version: "2.17.0",
+			installedFiles: ["skills/cook/SKILL.md"],
+		});
+
+		expect(detectLegacyState(claudeDir)).toEqual({ installed: true, version: "2.17.0" });
+		expect(detectInstallMode(claudeDir).mode).toBe("legacy");
+	});
+
+	test("legacy: checksum-less structured records trigger convergence without ownership inference", async () => {
+		await mkdir(join(claudeDir, "skills", "user"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "user", "SKILL.md"), "# user\n", "utf-8");
+		await writeMetadata({
+			name: "claudekit-engineer",
+			version: "2.17.0",
+			files: [{ path: "skills/user/SKILL.md" }],
+		});
+
+		expect(detectInstallMode(claudeDir).mode).toBe("legacy");
+	});
+
 	test("legacy: metadata without files or engineer kit is NOT legacy", async () => {
 		await writeMetadata({ name: "claudekit-engineer", version: "2.18.0" });
 		expect(detectLegacyState(claudeDir).installed).toBe(false);
