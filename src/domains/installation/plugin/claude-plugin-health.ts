@@ -23,12 +23,22 @@ export interface ClaudePluginHealth {
 	source: string | null;
 }
 
+export type ClaudeMarketplaceRegistrationStatus = "present" | "absent" | "unverifiable";
+
+export interface ClaudeMarketplaceRegistration {
+	status: ClaudeMarketplaceRegistrationStatus;
+	source: string | null;
+}
+
 export function detectClaudePluginHealth(
 	claudeDir: string,
 	options: ClaudePluginHealthOptions = {},
 ): ClaudePluginHealth {
 	const state = detectPluginState(claudeDir);
-	const source = readMarketplaceSource(claudeDir, state.marketplace ?? "claudekit");
+	const source = inspectClaudeMarketplaceRegistration(
+		claudeDir,
+		state.marketplace ?? "claudekit",
+	).source;
 	const base = { installedVersion: state.version, source };
 
 	if (!state.installed) {
@@ -51,23 +61,48 @@ export function detectClaudePluginHealth(
 	return { ...base, status: "installed-current", shouldRefresh: false };
 }
 
-function readMarketplaceSource(claudeDir: string, marketplace: string): string | null {
+/**
+ * Inspect Claude's persisted marketplace registry without invoking the provider.
+ * Both registry layouts observed in released Claude versions are supported.
+ * Invalid bytes or an invalid nested container are explicitly unverifiable so
+ * cleanup cannot report success from an unreadable registry.
+ */
+export function inspectClaudeMarketplaceRegistration(
+	claudeDir: string,
+	marketplace = "claudekit",
+): ClaudeMarketplaceRegistration {
+	const registryPath = join(claudeDir, "plugins", "known_marketplaces.json");
+	if (!existsSync(registryPath)) return { status: "absent", source: null };
+
 	try {
-		const parsed = JSON.parse(
-			readFileSync(join(claudeDir, "plugins", "known_marketplaces.json"), "utf-8"),
-		);
-		if (!isRecord(parsed)) return null;
-		const entry = isRecord(parsed[marketplace])
-			? parsed[marketplace]
-			: isRecord(parsed.marketplaces) && isRecord(parsed.marketplaces[marketplace])
-				? parsed.marketplaces[marketplace]
-				: null;
-		if (!entry) return null;
-		if (typeof entry.installLocation === "string") return entry.installLocation;
-		if (isRecord(entry.source) && typeof entry.source.path === "string") return entry.source.path;
-		return null;
+		const parsed: unknown = JSON.parse(readFileSync(registryPath, "utf-8"));
+		if (!isRecord(parsed)) return { status: "unverifiable", source: null };
+
+		let rawEntry: unknown;
+		if (Object.hasOwn(parsed, marketplace)) {
+			rawEntry = parsed[marketplace];
+		} else if (Object.hasOwn(parsed, "marketplaces")) {
+			if (!isRecord(parsed.marketplaces)) {
+				return { status: "unverifiable", source: null };
+			}
+			if (!Object.hasOwn(parsed.marketplaces, marketplace)) {
+				return { status: "absent", source: null };
+			}
+			rawEntry = parsed.marketplaces[marketplace];
+		} else {
+			return { status: "absent", source: null };
+		}
+
+		if (!isRecord(rawEntry)) return { status: "present", source: null };
+		if (typeof rawEntry.installLocation === "string") {
+			return { status: "present", source: rawEntry.installLocation };
+		}
+		if (isRecord(rawEntry.source) && typeof rawEntry.source.path === "string") {
+			return { status: "present", source: rawEntry.source.path };
+		}
+		return { status: "present", source: null };
 	} catch {
-		return null;
+		return { status: "unverifiable", source: null };
 	}
 }
 

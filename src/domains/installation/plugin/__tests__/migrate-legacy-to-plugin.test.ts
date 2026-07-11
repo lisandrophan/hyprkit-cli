@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectInstallMode } from "@/domains/installation/plugin/install-mode-detector.js";
@@ -396,10 +396,265 @@ describe("migrateLegacyToPlugin (orchestration)", () => {
 		expect(existsSync(join(claudeDir, ".ck-migration-log.json"))).toBe(false);
 	});
 
-	test("deprecated string installedFiles converge without deleting their payload", async () => {
+	test("rejects a preexisting symlinked backup root before removing legacy files", async () => {
 		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
+		const outsideBackup = join(
+			tmpdir(),
+			`ck-outside-backup-${Date.now()}-${Math.round(performance.now())}`,
+		);
 		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await mkdir(outsideBackup, { recursive: true });
+		await writeFile(legacyFile, "legacy skill", "utf-8");
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.19.0",
+					files: [{ path: "skills/cook/SKILL.md", ownership: "ck" }],
+				},
+			},
+		});
+		await symlink(outsideBackup, join(claudeDir, "backups"), "dir");
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/staged/kit",
+			claudeDir,
+			installer,
+			now: TS,
+		});
+
+		expect(result.action).toBe("install-failed");
+		expect(result.error).toContain("unsafe backup directory");
+		expect(readFileSync(legacyFile, "utf-8")).toBe("legacy skill");
+		expect(await readdir(outsideBackup)).toEqual([]);
+		await rm(outsideBackup, { recursive: true, force: true });
+	});
+
+	test("reports incomplete rollback when a receipt failure introduces a target symlink", async () => {
+		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
+		const outsideFile = join(
+			tmpdir(),
+			`ck-rollback-outside-${Date.now()}-${Math.round(performance.now())}.md`,
+		);
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await writeFile(legacyFile, "legacy skill", "utf-8");
+		await writeFile(outsideFile, "outside stays", "utf-8");
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.19.0",
+					files: [{ path: "skills/cook/SKILL.md", ownership: "ck" }],
+				},
+			},
+		});
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/staged/kit",
+			claudeDir,
+			installer,
+			now: TS,
+			writeReceiptFn: () => {
+				symlinkSync(outsideFile, legacyFile);
+				throw new Error("disk full");
+			},
+		});
+
+		expect(result.action).toBe("install-failed");
+		expect(result.error).toContain("rollback incomplete");
+		expect(result.error).toContain("skills/cook/SKILL.md");
+		expect(result.backupDir).not.toBeNull();
+		expect(existsSync(join(result.backupDir as string, "skills", "cook", "SKILL.md"))).toBe(true);
+		expect(readFileSync(outsideFile, "utf-8")).toBe("outside stays");
+		await rm(outsideFile, { force: true });
+	});
+
+	test("never restores metadata through a symlink introduced during receipt failure", async () => {
+		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
+		const metadataPath = join(claudeDir, "metadata.json");
+		const outsideFile = join(
+			tmpdir(),
+			`ck-metadata-restore-outside-${Date.now()}-${Math.round(performance.now())}.json`,
+		);
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await writeFile(legacyFile, "legacy skill", "utf-8");
+		await writeFile(outsideFile, "outside metadata stays", "utf-8");
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.19.0",
+					files: [{ path: "skills/cook/SKILL.md", ownership: "ck" }],
+				},
+			},
+		});
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/staged/kit",
+			claudeDir,
+			installer,
+			now: TS,
+			writeReceiptFn: () => {
+				rmSync(metadataPath, { force: true });
+				symlinkSync(outsideFile, metadataPath);
+				throw new Error("disk full");
+			},
+		});
+
+		expect(result.error).toContain("rollback incomplete");
+		expect(result.error).toContain("metadata.json: unsafe restore target");
+		expect(readFileSync(outsideFile, "utf-8")).toBe("outside metadata stays");
+		expect(result.backupDir).not.toBeNull();
+		await rm(outsideFile, { force: true });
+	});
+
+	test("never restores a receipt snapshot through a replacement symlink", async () => {
+		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
+		const receiptPath = join(claudeDir, ".ck-migration-log.json");
+		const outsideFile = join(
+			tmpdir(),
+			`ck-receipt-restore-outside-${Date.now()}-${Math.round(performance.now())}.json`,
+		);
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await writeFile(legacyFile, "legacy skill", "utf-8");
+		await writeFile(receiptPath, '[{"prior":true}]\n', "utf-8");
+		await writeFile(outsideFile, "outside receipt stays", "utf-8");
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.19.0",
+					files: [{ path: "skills/cook/SKILL.md", ownership: "ck" }],
+				},
+			},
+		});
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/staged/kit",
+			claudeDir,
+			installer,
+			now: TS,
+			writeReceiptFn: () => {
+				rmSync(receiptPath, { force: true });
+				symlinkSync(outsideFile, receiptPath);
+				throw new Error("disk full");
+			},
+		});
+
+		expect(result.error).toContain("rollback incomplete");
+		expect(result.error).toContain(".ck-migration-log.json: unsafe restore target");
+		expect(readFileSync(outsideFile, "utf-8")).toBe("outside receipt stays");
+		await rm(outsideFile, { force: true });
+	});
+
+	test("never restores Claude provider settings through a replacement symlink", async () => {
+		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
+		const settingsPath = join(claudeDir, "settings.json");
+		const outsideFile = join(
+			tmpdir(),
+			`ck-settings-restore-outside-${Date.now()}-${Math.round(performance.now())}.json`,
+		);
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await writeFile(legacyFile, "legacy skill", "utf-8");
+		await writeFile(settingsPath, JSON.stringify({ enabledPlugins: {} }), "utf-8");
+		await writeFile(outsideFile, "outside settings stay", "utf-8");
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.19.0",
+					files: [{ path: "skills/cook/SKILL.md", ownership: "ck" }],
+				},
+			},
+		});
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/staged/kit",
+			claudeDir,
+			installer,
+			now: TS,
+			writeReceiptFn: () => {
+				rmSync(settingsPath, { force: true });
+				symlinkSync(outsideFile, settingsPath);
+				throw new Error("disk full");
+			},
+		});
+
+		expect(result.error).toContain("rollback incomplete");
+		expect(result.error).toContain("settings.json: unsafe restore target");
+		expect(readFileSync(outsideFile, "utf-8")).toBe("outside settings stay");
+		await rm(outsideFile, { force: true });
+	});
+
+	test("same-version deprecated installedFiles converge when bytes match staged plugin payload", async () => {
+		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
+		const legacyAgent = join(claudeDir, "agents", "planner.md");
+		const pluginSourceDir = join(claudeDir, "staged-source");
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await mkdir(join(claudeDir, "agents"), { recursive: true });
+		await mkdir(join(pluginSourceDir, ".claude", "skills", "cook"), { recursive: true });
+		await mkdir(join(pluginSourceDir, ".claude", "agents"), { recursive: true });
+		await mkdir(join(pluginSourceDir, ".claude", ".claude-plugin"), { recursive: true });
 		await writeFile(legacyFile, "historical content", "utf-8");
+		await writeFile(legacyAgent, "historical agent", "utf-8");
+		await writeFile(
+			join(pluginSourceDir, ".claude", "skills", "cook", "SKILL.md"),
+			"historical content",
+			"utf-8",
+		);
+		await writeFile(
+			join(pluginSourceDir, ".claude", "agents", "planner.md"),
+			"historical agent",
+			"utf-8",
+		);
+		await writeFile(
+			join(pluginSourceDir, ".claude", ".claude-plugin", "plugin.json"),
+			JSON.stringify({ name: "ck", version: "2.18.0" }),
+			"utf-8",
+		);
+		await writeMetadata({
+			name: "engineer",
+			version: "2.18.0",
+			installedFiles: ["skills/cook/SKILL.md", "agents/planner.md"],
+		});
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir,
+			claudeDir,
+			installer,
+			now: TS,
+		});
+
+		expect(result.action).toBe("migrated-from-legacy");
+		expect(result.removedPaths).toEqual(["skills/cook/SKILL.md", "agents/planner.md"]);
+		expect(existsSync(legacyFile)).toBe(false);
+		expect(existsSync(legacyAgent)).toBe(false);
+		expect(
+			readFileSync(join(result.backupDir as string, "skills", "cook", "SKILL.md"), "utf-8"),
+		).toBe("historical content");
+		expect(readFileSync(join(result.backupDir as string, "agents", "planner.md"), "utf-8")).toBe(
+			"historical agent",
+		);
+		const metadata = JSON.parse(readFileSync(join(claudeDir, "metadata.json"), "utf-8"));
+		expect(metadata.installedFiles).toEqual([]);
+		await writeSettings({ "ck@claudekit": true });
+		await writeMarketplace(pluginSourceDir);
+		expect(detectInstallMode(claudeDir).mode).toBe("plugin");
+		expect(detectInstallMode(claudeDir).legacy.installed).toBe(false);
+	});
+
+	test("mismatched deprecated installedFiles content stays mixed and actionable", async () => {
+		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
+		const pluginSourceDir = join(claudeDir, "staged-source");
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await mkdir(join(pluginSourceDir, ".claude", "skills", "cook"), { recursive: true });
+		await writeFile(legacyFile, "user edited content", "utf-8");
+		await writeFile(
+			join(pluginSourceDir, ".claude", "skills", "cook", "SKILL.md"),
+			"staged plugin content",
+			"utf-8",
+		);
 		await writeMetadata({
 			name: "engineer",
 			version: "2.18.0",
@@ -408,20 +663,113 @@ describe("migrateLegacyToPlugin (orchestration)", () => {
 		const { installer } = fakeInstaller();
 
 		const result = await migrateLegacyToPlugin({
-			pluginSourceDir: "/src",
+			pluginSourceDir,
 			claudeDir,
 			installer,
 			now: TS,
 		});
 
 		expect(result.action).toBe("migrated-from-legacy");
-		expect(existsSync(legacyFile)).toBe(true);
+		expect(result.removedPaths).toEqual([]);
+		expect(readFileSync(legacyFile, "utf-8")).toBe("user edited content");
 		const metadata = JSON.parse(readFileSync(join(claudeDir, "metadata.json"), "utf-8"));
-		expect(metadata.installedFiles).toEqual([]);
+		expect(metadata.installedFiles).toEqual(["skills/cook/SKILL.md"]);
 		await writeSettings({ "ck@claudekit": true });
-		await writeMarketplace();
-		expect(detectInstallMode(claudeDir).mode).toBe("plugin");
-		expect(detectInstallMode(claudeDir).legacy.installed).toBe(false);
+		await writeMarketplace(pluginSourceDir);
+		expect(detectInstallMode(claudeDir).mode).toBe("mixed");
+		expect(detectInstallMode(claudeDir).legacy.installed).toBe(true);
+	});
+
+	test("multi-kit migration prunes nested Engineer records without touching ambiguous root records", async () => {
+		const liveNested = join(claudeDir, "skills", "live-nested", "SKILL.md");
+		const liveRoot = join(claudeDir, "agents", "live-root.md");
+		await mkdir(join(claudeDir, "skills", "live-nested"), { recursive: true });
+		await mkdir(join(claudeDir, "agents"), { recursive: true });
+		await writeFile(liveNested, "live nested", "utf-8");
+		await writeFile(liveRoot, "live root", "utf-8");
+		await writeMetadata({
+			files: [
+				{ path: "agents/live-root.md", ownership: "ck" },
+				{ path: "agents/removed-root.md", ownership: "ck" },
+			],
+			installedFiles: ["agents/live-root.md", "agents/removed-root.md"],
+			kits: {
+				engineer: {
+					files: [
+						{ path: "skills/live-nested/SKILL.md", ownership: "ck" },
+						{ path: "skills/removed-nested/SKILL.md", ownership: "ck" },
+					],
+					installedFiles: ["skills/live-nested/SKILL.md", "skills/removed-nested/SKILL.md"],
+				},
+				marketing: {
+					files: [{ path: "skills/marketing/SKILL.md", ownership: "ck" }],
+				},
+			},
+		});
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir: "/src",
+			claudeDir,
+			installer,
+			removeLegacy: () => ["skills/removed-nested/SKILL.md"],
+			now: TS,
+		});
+
+		expect(result.action).toBe("migrated-from-legacy");
+		const metadata = JSON.parse(readFileSync(join(claudeDir, "metadata.json"), "utf-8"));
+		expect(metadata.kits.engineer.files).toEqual([
+			{ path: "skills/live-nested/SKILL.md", ownership: "ck" },
+		]);
+		expect(metadata.kits.engineer.installedFiles).toEqual(["skills/live-nested/SKILL.md"]);
+		expect(metadata.files).toEqual([
+			{ path: "agents/live-root.md", ownership: "ck" },
+			{ path: "agents/removed-root.md", ownership: "ck" },
+		]);
+		expect(metadata.installedFiles).toEqual(["agents/live-root.md", "agents/removed-root.md"]);
+		expect(metadata.kits.marketing.files).toEqual([
+			{ path: "skills/marketing/SKILL.md", ownership: "ck" },
+		]);
+		expect(readFileSync(liveNested, "utf-8")).toBe("live nested");
+		expect(readFileSync(liveRoot, "utf-8")).toBe("live root");
+	});
+
+	test("sole-Engineer migration prunes both nested and transitional root records", async () => {
+		await mkdir(join(claudeDir, "skills", "live"), { recursive: true });
+		await mkdir(join(claudeDir, "agents"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "live", "SKILL.md"), "live", "utf-8");
+		await writeFile(join(claudeDir, "agents", "live.md"), "live", "utf-8");
+		await writeMetadata({
+			files: [
+				{ path: "agents/live.md", ownership: "ck" },
+				{ path: "agents/removed.md", ownership: "ck" },
+			],
+			installedFiles: ["agents/live.md", "agents/removed.md"],
+			kits: {
+				engineer: {
+					files: [
+						{ path: "skills/live/SKILL.md", ownership: "ck" },
+						{ path: "skills/removed/SKILL.md", ownership: "ck" },
+					],
+				},
+			},
+		});
+		const { installer } = fakeInstaller();
+
+		await migrateLegacyToPlugin({
+			pluginSourceDir: "/src",
+			claudeDir,
+			installer,
+			removeLegacy: () => ["skills/removed/SKILL.md", "agents/removed.md"],
+			now: TS,
+		});
+
+		const metadata = JSON.parse(readFileSync(join(claudeDir, "metadata.json"), "utf-8"));
+		expect(metadata.kits.engineer.files).toEqual([
+			{ path: "skills/live/SKILL.md", ownership: "ck" },
+		]);
+		expect(metadata.files).toEqual([{ path: "agents/live.md", ownership: "ck" }]);
+		expect(metadata.installedFiles).toEqual(["agents/live.md"]);
 	});
 
 	test("mixed already-installed plugin refreshes plugin and still cleans legacy skills", async () => {
@@ -521,7 +869,91 @@ describe("defaultLegacyRemover", () => {
 		expect(existsSync(join(backupDir, "agents", "planner.md"))).toBe(true); // backed up
 	});
 
-	test("legacy root installedFiles are evidence only and never deletion authority", async () => {
+	for (const ownership of ["ck", "user", "unknown"] as const) {
+		test(`preserves ${ownership}-owned files reached through a symlink component`, async () => {
+			const outsideDir = join(
+				tmpdir(),
+				`ck-rm-outside-${ownership}-${Date.now()}-${Math.round(performance.now())}`,
+			);
+			extraCleanupPaths.push(outsideDir);
+			await mkdir(outsideDir, { recursive: true });
+			await writeFile(join(outsideDir, "SKILL.md"), "outside content", "utf-8");
+			await symlink(outsideDir, join(claudeDir, "skills", "linked"), "dir");
+			const tracked = {
+				path: "skills/linked/SKILL.md",
+				ownership,
+				...(ownership === "user" ? { checksum: sha256("outside content") } : {}),
+			};
+			await writeFile(
+				join(claudeDir, "metadata.json"),
+				JSON.stringify({ kits: { engineer: { files: [tracked] } } }),
+				"utf-8",
+			);
+			const pluginSourceDir = join(claudeDir, "staged-source");
+			if (ownership === "unknown") {
+				await mkdir(join(pluginSourceDir, ".claude", "skills", "linked"), { recursive: true });
+				await writeFile(
+					join(pluginSourceDir, ".claude", "skills", "linked", "SKILL.md"),
+					"outside content",
+					"utf-8",
+				);
+			}
+
+			const removed = defaultLegacyRemover(claudeDir, backupDir, pluginSourceDir);
+
+			expect(removed).toEqual([]);
+			expect(readFileSync(join(outsideDir, "SKILL.md"), "utf-8")).toBe("outside content");
+			expect(existsSync(join(backupDir, "skills", "linked", "SKILL.md"))).toBe(false);
+		});
+	}
+
+	test("rejects unknown ownership proof reached through a staged-source symlink", async () => {
+		const outsideDir = join(
+			tmpdir(),
+			`ck-rm-staged-outside-${Date.now()}-${Math.round(performance.now())}`,
+		);
+		extraCleanupPaths.push(outsideDir);
+		await mkdir(outsideDir, { recursive: true });
+		await writeFile(join(outsideDir, "SKILL.md"), "matching content", "utf-8");
+		await writeFile(join(claudeDir, "skills", "cook", "SKILL.md"), "matching content", "utf-8");
+		await writeFile(
+			join(claudeDir, "metadata.json"),
+			JSON.stringify({ installedFiles: ["skills/cook/SKILL.md"] }),
+			"utf-8",
+		);
+		const pluginSourceDir = join(claudeDir, "staged-source");
+		await mkdir(join(pluginSourceDir, ".claude", "skills"), { recursive: true });
+		await symlink(outsideDir, join(pluginSourceDir, ".claude", "skills", "cook"), "dir");
+
+		const removed = defaultLegacyRemover(claudeDir, backupDir, pluginSourceDir);
+
+		expect(removed).toEqual([]);
+		expect(readFileSync(join(claudeDir, "skills", "cook", "SKILL.md"), "utf-8")).toBe(
+			"matching content",
+		);
+		expect(readFileSync(join(outsideDir, "SKILL.md"), "utf-8")).toBe("matching content");
+	});
+
+	test("preserves a structured CK-owned directory and all untracked descendants", async () => {
+		await writeFile(join(claudeDir, "skills", "cook", "SKILL.md"), "tracked", "utf-8");
+		await writeFile(join(claudeDir, "skills", "cook", "notes.txt"), "untracked", "utf-8");
+		await writeFile(
+			join(claudeDir, "metadata.json"),
+			JSON.stringify({
+				kits: { engineer: { files: [{ path: "skills/cook", ownership: "ck" }] } },
+			}),
+			"utf-8",
+		);
+
+		const removed = defaultLegacyRemover(claudeDir, backupDir);
+
+		expect(removed).toEqual([]);
+		expect(readFileSync(join(claudeDir, "skills", "cook", "SKILL.md"), "utf-8")).toBe("tracked");
+		expect(readFileSync(join(claudeDir, "skills", "cook", "notes.txt"), "utf-8")).toBe("untracked");
+		expect(existsSync(join(backupDir, "skills", "cook"))).toBe(false);
+	});
+
+	test("legacy root installedFiles require exact staged plugin bytes before deletion", async () => {
 		await writeFile(join(claudeDir, "skills", "cook", "SKILL.md"), "historical", "utf-8");
 		await writeFile(
 			join(claudeDir, "metadata.json"),
@@ -529,10 +961,58 @@ describe("defaultLegacyRemover", () => {
 			"utf-8",
 		);
 
-		const removed = defaultLegacyRemover(claudeDir, backupDir);
+		const removedWithoutSource = defaultLegacyRemover(claudeDir, backupDir);
+
+		expect(removedWithoutSource).toEqual([]);
+		expect(existsSync(join(claudeDir, "skills", "cook", "SKILL.md"))).toBe(true);
+
+		const pluginSourceDir = join(claudeDir, "staged-source");
+		await mkdir(join(pluginSourceDir, ".claude", "skills", "cook"), { recursive: true });
+		await writeFile(
+			join(pluginSourceDir, ".claude", "skills", "cook", "SKILL.md"),
+			"historical",
+			"utf-8",
+		);
+
+		const removedWithProof = defaultLegacyRemover(claudeDir, backupDir, pluginSourceDir);
+
+		expect(removedWithProof).toEqual(["skills/cook/SKILL.md"]);
+		expect(existsSync(join(claudeDir, "skills", "cook", "SKILL.md"))).toBe(false);
+		expect(readFileSync(join(backupDir, "skills", "cook", "SKILL.md"), "utf-8")).toBe("historical");
+	});
+
+	test("historical proof never authorizes runtime or untracked file deletion", async () => {
+		const pluginSourceDir = join(claudeDir, "staged-source");
+		await mkdir(join(claudeDir, "hooks"), { recursive: true });
+		await mkdir(join(pluginSourceDir, ".claude", "hooks"), { recursive: true });
+		await mkdir(join(pluginSourceDir, ".claude", "skills", "mine"), { recursive: true });
+		await writeFile(join(claudeDir, "hooks", "session-init.cjs"), "same runtime", "utf-8");
+		await writeFile(
+			join(pluginSourceDir, ".claude", "hooks", "session-init.cjs"),
+			"same runtime",
+			"utf-8",
+		);
+		await writeFile(join(claudeDir, "skills", "mine", "SKILL.md"), "same untracked", "utf-8");
+		await writeFile(
+			join(pluginSourceDir, ".claude", "skills", "mine", "SKILL.md"),
+			"same untracked",
+			"utf-8",
+		);
+		await writeFile(
+			join(claudeDir, "metadata.json"),
+			JSON.stringify({ installedFiles: ["hooks/session-init.cjs"] }),
+			"utf-8",
+		);
+
+		const removed = defaultLegacyRemover(claudeDir, backupDir, pluginSourceDir);
 
 		expect(removed).toEqual([]);
-		expect(existsSync(join(claudeDir, "skills", "cook", "SKILL.md"))).toBe(true);
+		expect(readFileSync(join(claudeDir, "hooks", "session-init.cjs"), "utf-8")).toBe(
+			"same runtime",
+		);
+		expect(readFileSync(join(claudeDir, "skills", "mine", "SKILL.md"), "utf-8")).toBe(
+			"same untracked",
+		);
 	});
 
 	test("checksum-less records stay while explicitly CK-owned records can be removed", async () => {

@@ -214,6 +214,35 @@ describe("install-mode-detector", () => {
 		expect(detectInstallMode(claudeDir).mode).toBe("fresh");
 	});
 
+	test("plugin: ck from an unrelated marketplace is not ClaudeKit-owned state", async () => {
+		await writeSettings({ "ck@community": true });
+		await makePluginCache("community", "9.9.9");
+
+		expect(detectPluginState(claudeDir)).toEqual({
+			installed: false,
+			enabled: false,
+			version: null,
+			marketplace: null,
+			staleCache: false,
+		});
+		expect(detectInstallMode(claudeDir).mode).toBe("fresh");
+		expect(resolveInstalledPluginCacheRoot(claudeDir)).toBeNull();
+	});
+
+	test("plugin: unrelated ck cache does not mask the official ClaudeKit cache", async () => {
+		await writeSettings({ "ck@community": true, "ck@claudekit": true });
+		await makePluginCache("community", "9.9.9");
+		await makePluginCache("claudekit", "2.20.1");
+
+		expect(detectPluginState(claudeDir)).toEqual({
+			installed: true,
+			enabled: true,
+			version: "2.20.1",
+			marketplace: "claudekit",
+			staleCache: false,
+		});
+	});
+
 	test("mixed: legacy payload AND plugin registration present", async () => {
 		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
 		await writeFile(join(claudeDir, "skills", "cook", "SKILL.md"), "# cook\n", "utf-8");

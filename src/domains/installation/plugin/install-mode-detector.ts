@@ -65,13 +65,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Detect Claude Code plugin install state for the `ck` plugin.
+ * Detect Claude Code plugin install state for the official `ck@claudekit` plugin.
  *
  * `installed` is authoritative from settings.json `enabledPlugins` (this is what
  * `claude plugin list` reflects). The plugin cache directory
- * `plugins/cache/<marketplace>/ck/<version>/` resolves the version, and when it
+ * `plugins/cache/claudekit/ck/<version>/` resolves the version, and when it
  * exists WITHOUT a registration it is reported as an orphaned `staleCache`
  * (uninstall removes the registration but leaves the cached payload on disk).
+ * Plugins or caches named `ck` under other marketplaces are unrelated and are
+ * deliberately ignored.
  */
 export function detectPluginState(claudeDir: string): PluginState {
 	const state: PluginState = {
@@ -82,41 +84,26 @@ export function detectPluginState(claudeDir: string): PluginState {
 		staleCache: false,
 	};
 
-	// Authoritative signal: settings.json enabledPlugins (key = "<plugin>@<marketplace>")
+	// Authoritative signal: the exact CK-owned settings registration.
 	const settings = readJsonSafe(join(claudeDir, "settings.json"));
 	if (isRecord(settings) && isRecord(settings.enabledPlugins)) {
-		for (const [key, value] of Object.entries(settings.enabledPlugins)) {
-			const [name, marketplace] = key.split("@");
-			if (name === CK_PLUGIN_NAME) {
-				state.installed = true;
-				state.marketplace = marketplace ?? null;
-				if (value === true) state.enabled = true;
-				break;
-			}
+		const registration = `${CK_PLUGIN_NAME}@${CK_MARKETPLACE_NAME}`;
+		if (Object.hasOwn(settings.enabledPlugins, registration)) {
+			state.installed = true;
+			state.marketplace = CK_MARKETPLACE_NAME;
+			if (settings.enabledPlugins[registration] === true) state.enabled = true;
 		}
 	}
 
-	// Cache payload: resolves version; flags an orphaned cache when not registered.
-	const cacheRoot = join(claudeDir, "plugins", "cache");
-	if (existsSync(cacheRoot)) {
-		// Prefer the marketplace recorded in settings (the registered one) over readdir
-		// order, so version resolution does not pick a stale cache under another marketplace.
-		const all = safeReaddir(cacheRoot);
-		const marketplaces = state.marketplace
-			? [state.marketplace, ...all.filter((m) => m !== state.marketplace)]
-			: all;
-		for (const marketplace of marketplaces) {
-			const ckDir = join(cacheRoot, marketplace, CK_PLUGIN_NAME);
-			if (existsSync(ckDir) && isDir(ckDir)) {
-				state.marketplace = state.marketplace ?? marketplace;
-				const versions = safeReaddir(ckDir).filter((v) => isDir(join(ckDir, v)));
-				if (versions.length > 0 && state.version === null) {
-					state.version = selectPluginCacheVersion(versions, ckDir);
-				}
-				if (!state.installed) state.staleCache = true;
-				break;
-			}
+	// Only the CK-owned marketplace cache participates in ClaudeKit lifecycle state.
+	const ckDir = join(claudeDir, "plugins", "cache", CK_MARKETPLACE_NAME, CK_PLUGIN_NAME);
+	if (existsSync(ckDir) && isDir(ckDir)) {
+		state.marketplace = CK_MARKETPLACE_NAME;
+		const versions = safeReaddir(ckDir).filter((version) => isDir(join(ckDir, version)));
+		if (versions.length > 0) {
+			state.version = selectPluginCacheVersion(versions, ckDir);
 		}
+		if (!state.installed) state.staleCache = true;
 	}
 
 	return state;

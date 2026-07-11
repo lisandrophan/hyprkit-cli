@@ -1,4 +1,5 @@
 import { PathResolver } from "@/shared/path-resolver.js";
+import { inspectClaudeMarketplaceRegistration } from "./claude-plugin-health.js";
 import {
 	type CodexPluginState,
 	detectCodexPluginState,
@@ -54,7 +55,8 @@ export async function cleanupEngineerProviderPlugins(
 		deps.verifyClaudePluginAbsent ??
 		(() => {
 			const state = detectPluginState(PathResolver.getGlobalKitDir());
-			return !state.installed && !state.staleCache;
+			const marketplace = inspectClaudeMarketplaceRegistration(PathResolver.getGlobalKitDir());
+			return !state.installed && !state.staleCache && marketplace.status === "absent";
 		});
 	const readCodexState = deps.readCodexPluginState ?? (() => detectCodexPluginState());
 
@@ -68,9 +70,18 @@ export async function cleanupEngineerProviderPlugins(
 
 	if (claudeAttempt.status === "rejected") {
 		errors.push(`Claude plugin cleanup failed: ${String(claudeAttempt.reason)}`);
-	} else if (claudeAttempt.value.error || claudeAttempt.value.pluginStillInstalled) {
+	} else if (
+		claudeAttempt.value.error ||
+		claudeAttempt.value.pluginStillInstalled ||
+		claudeAttempt.value.marketplaceStillRegistered
+	) {
 		errors.push(
-			`Claude plugin cleanup failed: ${claudeAttempt.value.error ?? "plugin is still installed"}`,
+			`Claude plugin cleanup failed: ${
+				claudeAttempt.value.error ??
+				(claudeAttempt.value.pluginStillInstalled
+					? "plugin is still installed"
+					: "marketplace is still registered")
+			}`,
 		);
 	}
 
@@ -108,6 +119,7 @@ export async function cleanupEngineerProviderPlugins(
 		changed: Boolean(
 			claude?.uninstalled ||
 				claude?.staleCacheRemoved ||
+				claude?.marketplaceRemoved ||
 				codex?.removed ||
 				codex?.marketplaceRemoved,
 		),
