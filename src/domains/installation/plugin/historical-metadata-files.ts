@@ -24,14 +24,21 @@ export function collectEngineerHistoricalFiles(metadata: unknown): HistoricalTra
 	if (!isRecord(metadata)) return [];
 
 	const tracked: HistoricalTrackedFile[] = [];
+	const seen = new Set<string>();
 	const push = (files: unknown) => {
 		if (!Array.isArray(files)) return;
 		for (const file of files) {
 			if (typeof file === "string") {
+				const key = normalizeHistoricalPath(file);
+				if (seen.has(key)) continue;
+				seen.add(key);
 				tracked.push({ path: file, ownership: "unknown" });
 				continue;
 			}
 			if (!isRecord(file) || typeof file.path !== "string") continue;
+			const key = normalizeHistoricalPath(file.path);
+			if (seen.has(key)) continue;
+			seen.add(key);
 			tracked.push({
 				path: file.path,
 				ownership: normalizeOwnership(file.ownership),
@@ -40,16 +47,28 @@ export function collectEngineerHistoricalFiles(metadata: unknown): HistoricalTra
 		}
 	};
 
+	let includeTransitionalRoot = true;
 	if (isRecord(metadata.kits)) {
 		const engineer = metadata.kits.engineer;
-		if (isRecord(engineer)) {
-			push(engineer.files);
-			push(engineer.installedFiles);
-		}
-		return tracked;
+		if (!isRecord(engineer)) return [];
+		push(engineer.files);
+		push(engineer.installedFiles);
+		includeTransitionalRoot = Object.keys(metadata.kits).length === 1;
 	}
 
-	push(metadata.files);
-	push(metadata.installedFiles);
+	// metadata-migration preserved root records beside the sole nested kit. Once
+	// multiple kits exist, root records are ambiguous and must not be attributed
+	// to Engineer; nested Engineer metadata is the only deletion authority.
+	if (includeTransitionalRoot) {
+		push(metadata.files);
+		push(metadata.installedFiles);
+	}
 	return tracked;
+}
+
+function normalizeHistoricalPath(pathValue: string): string {
+	return pathValue
+		.replace(/\\/g, "/")
+		.replace(/^\.\/+/, "")
+		.replace(/^\.claude\//, "");
 }

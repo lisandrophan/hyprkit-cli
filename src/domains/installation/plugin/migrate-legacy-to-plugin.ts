@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import {
-	cpSync,
+	copyFileSync,
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	readFileSync,
 	readdirSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -52,7 +54,11 @@ export interface MigrateResult {
 }
 
 /** Removes legacy ck-owned files; returns removed relative paths. Injectable for tests. */
-export type LegacyRemover = (claudeDir: string, backupDir: string) => string[];
+export type LegacyRemover = (
+	claudeDir: string,
+	backupDir: string,
+	pluginSourceDir?: string,
+) => string[];
 
 export interface MigrateOptions {
 	/** Staged kit dir containing .claude-plugin/marketplace.json (the local marketplace source). */
@@ -114,10 +120,10 @@ export async function migrateLegacyToPlugin(opts: MigrateOptions): Promise<Migra
 	}
 	const verified = await installer.verifyInstalled();
 	if (!verified) {
-		prepared.rollback?.();
+		const rollbackFailures = prepared.rollback?.() ?? [];
 		return {
 			...base("install-failed", before.mode, false),
-			error: "plugin did not verify after install",
+			error: appendRollbackFailures("plugin did not verify after install", rollbackFailures),
 		};
 	}
 
@@ -134,8 +140,8 @@ export async function migrateLegacyToPlugin(opts: MigrateOptions): Promise<Migra
 	try {
 		if (before.legacy.installed) {
 			backupDir = join(claudeDir, "backups", `ck-legacy-${ts.replace(/[:.]/g, "-")}`);
-			mkdirSync(backupDir, { recursive: true });
-			removedPaths = removeLegacy(claudeDir, backupDir);
+			createSafeBackupDirectory(claudeDir, backupDir);
+			removedPaths = removeLegacy(claudeDir, backupDir, opts.pluginSourceDir);
 			prunePluginSuppliedLegacyFilesFromMetadata(claudeDir, removedPaths);
 		}
 
@@ -150,13 +156,33 @@ export async function migrateLegacyToPlugin(opts: MigrateOptions): Promise<Migra
 			timestamp: ts,
 		});
 	} catch (error) {
-		if (backupDir) restoreLegacyBackup(claudeDir, backupDir, removedPaths);
-		restoreFile(metadataPath, metadataSnapshot);
-		restoreFile(receiptFile, receiptSnapshot);
-		prepared.rollback?.();
+		const rollbackFailures =
+			backupDir && removedPaths.length > 0
+				? restoreLegacyBackup(claudeDir, backupDir, removedPaths)
+				: [];
+		const metadataFailure = restoreFileSafely(
+			claudeDir,
+			metadataPath,
+			metadataSnapshot,
+			"metadata.json",
+		);
+		if (metadataFailure) rollbackFailures.push(metadataFailure);
+		const receiptFailure = restoreFileSafely(
+			claudeDir,
+			receiptFile,
+			receiptSnapshot,
+			".ck-migration-log.json",
+		);
+		if (receiptFailure) rollbackFailures.push(receiptFailure);
+		rollbackFailures.push(...(prepared.rollback?.() ?? []));
+		const rollbackDetail =
+			rollbackFailures.length > 0
+				? `; rollback incomplete: ${rollbackFailures.join(", ")}${backupDir ? `; backup retained at ${backupDir}` : ""}`
+				: "";
 		return {
 			...base("install-failed", before.mode, false),
-			error: `plugin migration transaction failed: ${(error as Error).message}`,
+			...(rollbackFailures.length > 0 ? { backupDir, removedPaths } : {}),
+			error: `plugin migration transaction failed: ${(error as Error).message}${rollbackDetail}`,
 		};
 	}
 
@@ -198,7 +224,11 @@ const LEGACY_SENTINEL_FILENAMES = new Set([".gitignore"]);
  * are now supplied by the Claude Code plugin, preserving user-owned files and
  * legacy runtime surfaces that the plugin format does not yet provide.
  */
-export function defaultLegacyRemover(claudeDir: string, backupDir: string): string[] {
+export function defaultLegacyRemover(
+	claudeDir: string,
+	backupDir: string,
+	pluginSourceDir?: string,
+): string[] {
 	const meta = readJsonSafe(join(claudeDir, "metadata.json"));
 	const files = collectEngineerHistoricalFiles(meta);
 	const removed: string[] = [];
@@ -206,36 +236,95 @@ export function defaultLegacyRemover(claudeDir: string, backupDir: string): stri
 		const legacyPath = resolveSafePluginSuppliedLegacyPath(claudeDir, file.path);
 		if (!legacyPath) continue;
 		if (!existsSync(legacyPath.absolutePath)) continue;
-		if (!isSafeToRemovePluginSuppliedLegacyFile(file, legacyPath.absolutePath)) continue;
+		if (
+			!isSafeToRemovePluginSuppliedLegacyFile(
+				file,
+				claudeDir,
+				legacyPath.absolutePath,
+				legacyPath.relativePath,
+				pluginSourceDir,
+			)
+		)
+			continue;
 		// Back up before removing.
-		if (!backupAndRemove(backupDir, legacyPath.relativePath, legacyPath.absolutePath)) continue;
+		if (!backupAndRemove(claudeDir, backupDir, legacyPath.relativePath, legacyPath.absolutePath))
+			continue;
 		removed.push(legacyPath.relativePath);
 	}
 	removed.push(...removeOrphanLegacySentinels(claudeDir, backupDir, removed));
 	return removed;
 }
 
-function backupAndRemove(backupDir: string, relativePath: string, abs: string): boolean {
+function backupAndRemove(
+	sourceBaseDir: string,
+	backupDir: string,
+	relativePath: string,
+	abs: string,
+): boolean {
 	const backupTarget = resolveSafeChildPath(backupDir, relativePath);
-	if (!backupTarget) return false;
+	if (
+		!backupTarget ||
+		!isSafeDirectoryWithin(sourceBaseDir, backupDir) ||
+		!isSafeRegularFileWithin(sourceBaseDir, abs)
+	)
+		return false;
 	try {
+		if (pathHasSymlinkComponent(backupDir, dirname(backupTarget))) return false;
 		mkdirSync(dirname(backupTarget), { recursive: true });
-		cpSync(abs, backupTarget, { recursive: true });
-		rmSync(abs, { recursive: true, force: true });
+		if (pathHasSymlinkComponent(backupDir, backupTarget)) return false;
+		copyFileSync(abs, backupTarget);
+		rmSync(abs, { force: true });
 		return true;
 	} catch {
 		return false;
 	}
 }
 
-function restoreLegacyBackup(claudeDir: string, backupDir: string, removedPaths: string[]): void {
+function restoreLegacyBackup(
+	claudeDir: string,
+	backupDir: string,
+	removedPaths: string[],
+): string[] {
+	const failures: string[] = [];
+	if (!isSafeDirectoryWithin(claudeDir, backupDir)) {
+		return removedPaths.map((pathValue) => `${pathValue}: unsafe backup directory`);
+	}
+
 	for (const pathValue of removedPaths) {
 		const source = resolveSafeChildPath(backupDir, pathValue);
 		const target = resolveSafeChildPath(claudeDir, pathValue);
-		if (!source || !target || !existsSync(source)) continue;
-		mkdirSync(dirname(target), { recursive: true });
-		cpSync(source, target, { recursive: true });
+		if (!source || !target || !isSafeRegularFileWithin(backupDir, source)) {
+			failures.push(`${pathValue}: unsafe or missing backup file`);
+			continue;
+		}
+		if (pathHasSymlinkComponent(claudeDir, target) || existsSync(target)) {
+			failures.push(`${pathValue}: unsafe rollback destination`);
+			continue;
+		}
+
+		try {
+			const targetParent = dirname(target);
+			if (pathHasSymlinkComponent(claudeDir, targetParent)) {
+				failures.push(`${pathValue}: unsafe rollback destination`);
+				continue;
+			}
+			mkdirSync(targetParent, { recursive: true });
+			if (
+				!isSafeDirectoryWithin(claudeDir, targetParent) ||
+				pathHasSymlinkComponent(claudeDir, target)
+			) {
+				failures.push(`${pathValue}: unsafe rollback destination`);
+				continue;
+			}
+			copyFileSync(source, target);
+			if (!isSafeRegularFileWithin(claudeDir, target)) {
+				failures.push(`${pathValue}: restored file failed safety verification`);
+			}
+		} catch (error) {
+			failures.push(`${pathValue}: ${(error as Error).message}`);
+		}
 	}
+	return failures;
 }
 
 function removeOrphanLegacySentinels(
@@ -261,8 +350,9 @@ function removeOrphanLegacySentinels(
 		);
 		for (const sentinelAbs of sentinels) {
 			const sentinelPath = normalizeLegacyPath(relative(claudeDir, sentinelAbs));
-			if (!isSafeToRemoveLegacySentinel(sentinelPath, sentinelAbs, normalizedRemoved)) continue;
-			if (!backupAndRemove(backupDir, sentinelPath, sentinelAbs)) continue;
+			if (!isSafeToRemoveLegacySentinel(claudeDir, sentinelPath, sentinelAbs, normalizedRemoved))
+				continue;
+			if (!backupAndRemove(claudeDir, backupDir, sentinelPath, sentinelAbs)) continue;
 			removed.push(sentinelPath);
 		}
 	}
@@ -290,12 +380,14 @@ function findLegacySentinels(dir: string): string[] {
 }
 
 function isSafeToRemoveLegacySentinel(
+	claudeDir: string,
 	sentinelPath: string,
 	sentinelAbs: string,
 	removedTrackedPaths: string[],
 ): boolean {
 	if (!isPluginSuppliedLegacyPath(sentinelPath)) return false;
 	if (!LEGACY_SENTINEL_FILENAMES.has(sentinelPath.split("/").pop() ?? "")) return false;
+	if (!isSafeRegularFileWithin(claudeDir, sentinelAbs)) return false;
 
 	const sentinelDir = dirname(sentinelPath).replace(/\\/g, "/");
 	if (!removedTrackedPaths.some((removedPath) => removedPath.startsWith(`${sentinelDir}/`))) {
@@ -324,8 +416,18 @@ function directoryContainsOnlySentinels(dir: string): boolean {
 	return true;
 }
 
-function isSafeToRemovePluginSuppliedLegacyFile(file: HistoricalTrackedFile, abs: string): boolean {
+function isSafeToRemovePluginSuppliedLegacyFile(
+	file: HistoricalTrackedFile,
+	claudeDir: string,
+	abs: string,
+	relativePath: string,
+	pluginSourceDir?: string,
+): boolean {
+	if (!isSafeRegularFileWithin(claudeDir, abs)) return false;
 	if (file.ownership === "ck") return true;
+	if (file.ownership === "unknown") {
+		return stagedPluginPayloadMatches(pluginSourceDir, relativePath, abs);
+	}
 	if (file.ownership !== "user") return false;
 
 	// Offline/local kit installs can lack release-manifest.json, so files are
@@ -333,6 +435,106 @@ function isSafeToRemovePluginSuppliedLegacyFile(file: HistoricalTrackedFile, abs
 	// only when the tracked checksum still matches disk; edited or untracked
 	// user files stay protected.
 	return checksumMatches(abs, file.checksum);
+}
+
+function stagedPluginPayloadMatches(
+	pluginSourceDir: string | undefined,
+	relativePath: string,
+	legacyPath: string,
+): boolean {
+	if (!pluginSourceDir) return false;
+	const stagedPath = resolveSafePluginSuppliedLegacyPath(
+		join(pluginSourceDir, ".claude"),
+		relativePath,
+	);
+	if (!stagedPath || !existsSync(stagedPath.absolutePath)) return false;
+
+	try {
+		if (!isSafeRegularFileWithin(join(pluginSourceDir, ".claude"), stagedPath.absolutePath))
+			return false;
+		return readFileSync(legacyPath).equals(readFileSync(stagedPath.absolutePath));
+	} catch {
+		return false;
+	}
+}
+
+function isSafeRegularFileWithin(baseDir: string, filePath: string): boolean {
+	const resolvedBase = resolve(baseDir);
+	const resolvedFile = resolve(filePath);
+	const relativePath = normalizeLegacyPath(relative(resolvedBase, resolvedFile));
+	if (!relativePath || relativePath === ".." || relativePath.startsWith("../")) return false;
+	if (pathHasSymlinkComponent(resolvedBase, resolvedFile)) return false;
+
+	try {
+		if (!lstatSync(resolvedFile).isFile()) return false;
+		const realBase = realpathSync(resolvedBase);
+		const realFile = realpathSync(resolvedFile);
+		const realRelative = normalizeLegacyPath(relative(realBase, realFile));
+		return Boolean(realRelative && realRelative !== ".." && !realRelative.startsWith("../"));
+	} catch {
+		return false;
+	}
+}
+
+function createSafeBackupDirectory(claudeDir: string, backupDir: string): void {
+	if (pathHasSymlinkComponent(claudeDir, backupDir)) {
+		throw new Error("unsafe backup directory: symlink or path escape detected");
+	}
+	mkdirSync(backupDir, { recursive: true });
+	if (!isSafeDirectoryWithin(claudeDir, backupDir)) {
+		throw new Error("unsafe backup directory: path is outside Claude config");
+	}
+}
+
+function isSafeDirectoryWithin(baseDir: string, directoryPath: string): boolean {
+	const resolvedBase = resolve(baseDir);
+	const resolvedDirectory = resolve(directoryPath);
+	const relativePath = normalizeLegacyPath(relative(resolvedBase, resolvedDirectory));
+	if (!relativePath || relativePath === ".." || relativePath.startsWith("../")) return false;
+	if (pathHasSymlinkComponent(resolvedBase, resolvedDirectory)) return false;
+
+	try {
+		if (!lstatSync(resolvedDirectory).isDirectory()) return false;
+		const realBase = realpathSync(resolvedBase);
+		const realDirectory = realpathSync(resolvedDirectory);
+		const realRelative = normalizeLegacyPath(relative(realBase, realDirectory));
+		return Boolean(realRelative && realRelative !== ".." && !realRelative.startsWith("../"));
+	} catch {
+		return false;
+	}
+}
+
+function isSafeDirectoryAtOrWithin(baseDir: string, directoryPath: string): boolean {
+	const resolvedBase = resolve(baseDir);
+	const resolvedDirectory = resolve(directoryPath);
+	if (resolvedBase === resolvedDirectory) {
+		try {
+			return realpathSync(resolvedBase) === realpathSync(resolvedDirectory);
+		} catch {
+			return false;
+		}
+	}
+	return isSafeDirectoryWithin(resolvedBase, resolvedDirectory);
+}
+
+function pathHasSymlinkComponent(baseDir: string, targetPath: string): boolean {
+	const resolvedBase = resolve(baseDir);
+	const relativePath = normalizeLegacyPath(relative(resolvedBase, resolve(targetPath)));
+	if (!relativePath || relativePath === ".." || relativePath.startsWith("../")) return true;
+
+	let current = resolvedBase;
+	for (const segment of relativePath.split("/")) {
+		current = join(current, segment);
+		try {
+			if (lstatSync(current).isSymbolicLink()) return true;
+		} catch (error) {
+			// A not-yet-created destination component is safe; source callers apply
+			// an existence/realpath check immediately after this walk.
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+			return true;
+		}
+	}
+	return false;
 }
 
 function checksumMatches(filePath: string, expected?: string): boolean {
@@ -416,31 +618,34 @@ function prunePluginSuppliedLegacyFilesFromMetadata(
 		const pruned = files.filter((file) => {
 			if (typeof file === "string") {
 				const normalizedPath = normalizeComparableLegacyPath(file);
-				return !(
-					isPluginSuppliedLegacyPath(normalizedPath) &&
-					resolveSafePluginSuppliedLegacyPath(claudeDir, normalizedPath) !== null
-				);
+				const resolvedPath = resolveSafePluginSuppliedLegacyPath(claudeDir, normalizedPath);
+				const shouldPrune =
+					(removed?.has(normalizedPath) ?? false) ||
+					(resolvedPath !== null && !existsSync(resolvedPath.absolutePath));
+				return !shouldPrune;
 			}
 			if (!isRecord(file) || typeof file.path !== "string") return true;
 			const normalizedPath = normalizeComparableLegacyPath(file.path);
 			const resolvedPath = resolveSafePluginSuppliedLegacyPath(claudeDir, normalizedPath);
-			const shouldPrune = removed
-				? removed.has(normalizedPath) ||
-					(resolvedPath !== null && !existsSync(resolvedPath.absolutePath))
-				: isPluginSuppliedLegacyPath(normalizedPath);
+			const shouldPrune =
+				(removed?.has(normalizedPath) ?? false) ||
+				(resolvedPath !== null && !existsSync(resolvedPath.absolutePath));
 			return !shouldPrune;
 		});
 		if (pruned.length !== files.length) changed = true;
 		return pruned;
 	};
 
+	let pruneTransitionalRoot = true;
 	if (isRecord(meta.kits)) {
 		const engineer = (meta.kits as Record<string, unknown>)[ENGINEER_KIT_KEY];
 		if (isRecord(engineer)) {
 			engineer.files = pruneFiles(engineer.files);
 			engineer.installedFiles = pruneFiles(engineer.installedFiles);
 		}
-	} else {
+		pruneTransitionalRoot = isRecord(engineer) && Object.keys(meta.kits).length === 1;
+	}
+	if (pruneTransitionalRoot) {
 		meta.files = pruneFiles(meta.files);
 		meta.installedFiles = pruneFiles(meta.installedFiles);
 	}
@@ -487,19 +692,59 @@ function snapshotFile(filePath: string): Buffer | null {
 	return existsSync(filePath) ? readFileSync(filePath) : null;
 }
 
-function restoreFile(filePath: string, content: Buffer | null): void {
-	if (content === null) {
-		rmSync(filePath, { force: true });
-		return;
+function restoreFileSafely(
+	rootDir: string,
+	filePath: string,
+	content: Buffer | null,
+	label: string,
+): string | null {
+	const resolvedRoot = resolve(rootDir);
+	const resolvedFile = resolve(filePath);
+	const relativePath = normalizeLegacyPath(relative(resolvedRoot, resolvedFile));
+	if (!relativePath || relativePath === ".." || relativePath.startsWith("../")) {
+		return `${label}: restore target escapes owned root`;
 	}
-	mkdirSync(dirname(filePath), { recursive: true });
-	writeFileSync(filePath, content);
+	if (pathHasSymlinkComponent(resolvedRoot, resolvedFile)) {
+		return `${label}: unsafe restore target`;
+	}
+
+	try {
+		if (content === null) {
+			if (!existsSync(resolvedFile)) return null;
+			if (!isSafeRegularFileWithin(resolvedRoot, resolvedFile)) {
+				return `${label}: unsafe restore target`;
+			}
+			rmSync(resolvedFile, { force: true });
+			return null;
+		}
+
+		const parent = dirname(resolvedFile);
+		if (parent !== resolvedRoot && pathHasSymlinkComponent(resolvedRoot, parent)) {
+			return `${label}: unsafe restore parent`;
+		}
+		mkdirSync(parent, { recursive: true });
+		if (
+			!isSafeDirectoryAtOrWithin(resolvedRoot, parent) ||
+			pathHasSymlinkComponent(resolvedRoot, resolvedFile)
+		) {
+			return `${label}: unsafe restore target`;
+		}
+		if (existsSync(resolvedFile) && !isSafeRegularFileWithin(resolvedRoot, resolvedFile)) {
+			return `${label}: unsafe restore target`;
+		}
+		writeFileSync(resolvedFile, content);
+		return isSafeRegularFileWithin(resolvedRoot, resolvedFile)
+			? null
+			: `${label}: restored snapshot failed safety verification`;
+	} catch (error) {
+		return `${label}: ${(error as Error).message}`;
+	}
 }
 
 interface PluginPrepareResult {
 	ok: boolean;
 	error?: string;
-	rollback?: () => void;
+	rollback?: () => string[];
 }
 
 async function installPlugin(
@@ -511,8 +756,14 @@ async function installPlugin(
 	if (!marketplace.ok) return marketplace;
 	const installed = await installer.install("user");
 	if (!installed.ok) {
-		marketplace.rollback?.();
-		return { ok: false, error: `plugin install failed: ${installed.stderr.trim()}` };
+		const rollbackFailures = marketplace.rollback?.() ?? [];
+		return {
+			ok: false,
+			error: appendRollbackFailures(
+				`plugin install failed: ${installed.stderr.trim()}`,
+				rollbackFailures,
+			),
+		};
 	}
 	return { ok: true, rollback: marketplace.rollback };
 }
@@ -535,20 +786,33 @@ async function refreshExistingPlugin(
 	if (!enabled) {
 		const enabledResult = await installer.enable();
 		if (!enabledResult.ok) {
-			marketplace.rollback?.();
-			return { ok: false, error: `plugin enable failed: ${enabledResult.stderr.trim()}` };
+			const rollbackFailures = marketplace.rollback?.() ?? [];
+			return {
+				ok: false,
+				error: appendRollbackFailures(
+					`plugin enable failed: ${enabledResult.stderr.trim()}`,
+					rollbackFailures,
+				),
+			};
 		}
 	}
 
 	const updated = await installer.update();
 	if (!updated.ok) {
-		marketplace.rollback?.();
-		return { ok: false, error: `plugin update failed: ${updated.stderr.trim()}` };
+		const rollbackFailures = marketplace.rollback?.() ?? [];
+		return {
+			ok: false,
+			error: appendRollbackFailures(
+				`plugin update failed: ${updated.stderr.trim()}`,
+				rollbackFailures,
+			),
+		};
 	}
 	return { ok: true, rollback: marketplace.rollback };
 }
 
 interface ClaudeRegistrationSnapshot {
+	claudeDir: string;
 	files: Array<{ path: string; content: Buffer | null }>;
 }
 
@@ -563,18 +827,24 @@ async function prepareClaudeMarketplace(
 	if (forceReplacement) {
 		const removed = await installer.marketplaceRemove();
 		if (!removed.ok) {
-			rollback();
+			const rollbackFailures = rollback();
 			return {
 				ok: false,
-				error: `marketplace replacement failed: ${removed.stderr.trim()}`,
+				error: appendRollbackFailures(
+					`marketplace replacement failed: ${removed.stderr.trim()}`,
+					rollbackFailures,
+				),
 			};
 		}
 		const replaced = await installer.marketplaceAdd(pluginSourceDir);
 		if (replaced.ok) return { ok: true, rollback };
-		rollback();
+		const rollbackFailures = rollback();
 		return {
 			ok: false,
-			error: `marketplace replacement failed: ${replaced.stderr.trim()}; restored previous registration`,
+			error: describeRegistrationRollback(
+				`marketplace replacement failed: ${replaced.stderr.trim()}`,
+				rollbackFailures,
+			),
 		};
 	}
 	const added = await installer.marketplaceAdd(pluginSourceDir);
@@ -585,24 +855,31 @@ async function prepareClaudeMarketplace(
 
 	const removed = await installer.marketplaceRemove();
 	if (!removed.ok) {
-		rollback();
+		const rollbackFailures = rollback();
 		return {
 			ok: false,
-			error: `marketplace replacement failed: ${removed.stderr.trim() || updated.stderr.trim() || added.stderr.trim()}`,
+			error: appendRollbackFailures(
+				`marketplace replacement failed: ${removed.stderr.trim() || updated.stderr.trim() || added.stderr.trim()}`,
+				rollbackFailures,
+			),
 		};
 	}
 	const replaced = await installer.marketplaceAdd(pluginSourceDir);
 	if (replaced.ok) return { ok: true, rollback };
 
-	rollback();
+	const rollbackFailures = rollback();
 	return {
 		ok: false,
-		error: `marketplace replacement failed: ${replaced.stderr.trim() || updated.stderr.trim() || added.stderr.trim()}; restored previous registration`,
+		error: describeRegistrationRollback(
+			`marketplace replacement failed: ${replaced.stderr.trim() || updated.stderr.trim() || added.stderr.trim()}`,
+			rollbackFailures,
+		),
 	};
 }
 
 function snapshotClaudeRegistration(claudeDir: string): ClaudeRegistrationSnapshot {
 	return {
+		claudeDir,
 		files: [
 			join(claudeDir, "plugins", "known_marketplaces.json"),
 			join(claudeDir, "settings.json"),
@@ -613,15 +890,28 @@ function snapshotClaudeRegistration(claudeDir: string): ClaudeRegistrationSnapsh
 	};
 }
 
-function restoreClaudeRegistration(snapshot: ClaudeRegistrationSnapshot): void {
+function restoreClaudeRegistration(snapshot: ClaudeRegistrationSnapshot): string[] {
+	const failures: string[] = [];
 	for (const file of snapshot.files) {
-		if (file.content === null) {
-			rmSync(file.path, { force: true });
-			continue;
-		}
-		mkdirSync(dirname(file.path), { recursive: true });
-		writeFileSync(file.path, file.content);
+		const failure = restoreFileSafely(
+			snapshot.claudeDir,
+			file.path,
+			file.content,
+			normalizeLegacyPath(relative(snapshot.claudeDir, file.path)),
+		);
+		if (failure) failures.push(failure);
 	}
+	return failures;
+}
+
+function appendRollbackFailures(message: string, failures: string[]): string {
+	return failures.length > 0 ? `${message}; rollback incomplete: ${failures.join(", ")}` : message;
+}
+
+function describeRegistrationRollback(message: string, failures: string[]): string {
+	return failures.length > 0
+		? appendRollbackFailures(message, failures)
+		: `${message}; restored previous registration`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

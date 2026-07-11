@@ -77,6 +77,25 @@ describe("cleanupEngineerProviderPlugins", () => {
 		]);
 	});
 
+	test("counts Claude marketplace-only cleanup as a provider change", async () => {
+		const result = await cleanupEngineerProviderPlugins({
+			uninstallClaudePlugin: async () => ({
+				...claudeAbsent,
+				marketplaceRemoved: true,
+				marketplaceStillRegistered: false,
+			}),
+			removeCodexPlugin: async () => ({
+				removed: false,
+				marketplaceRemoved: false,
+				pluginStillInstalled: false,
+			}),
+			verifyClaudePluginAbsent: () => true,
+			readCodexPluginState: async () => codexState("missing"),
+		});
+
+		expect(result).toMatchObject({ success: true, changed: true, errors: [] });
+	});
+
 	test("is idempotent when both providers are already absent", async () => {
 		const deps = {
 			uninstallClaudePlugin: async () => claudeAbsent,
