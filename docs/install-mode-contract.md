@@ -92,6 +92,13 @@ Plugin:
 - Cleanup copied skills only after plugin verification.
 - Persist `plugin` so later init/update runs retain the explicit choice.
 
+Skill identifiers:
+
+- Canonical Engineer plugin payloads use bare skill names such as `scout`; Claude and
+  Codex expose them through the plugin namespace as `ck:scout`.
+- Normal copied installs project bare names to `ck:<name>` exactly once, including nested
+  skills, without changing the canonical plugin payload.
+
 ## Duplicate-State Regression
 
 The known bad state is copied Engineer skills at version N plus an enabled
@@ -107,6 +114,11 @@ Repair rules:
 ## Cleanup And Rollback
 
 - No destructive cleanup happens before replacement verification.
+- A replacement marketplace source is built and validated in a temporary directory. The
+  prior stable source remains available until both provider preparations verify.
+- Claude or Codex preparation failure restores the previous stable source and provider
+  registration; successful preparations commit together without temporary or backup
+  residue.
 - Copied files are backed up under `.claude/backups/ck-legacy-<timestamp>` before
   removal.
 - Migration writes a receipt recording source mode, target mode, plugin version,
@@ -136,6 +148,8 @@ Repair rules:
 - Preserves explicit stored `plugin` consent across version updates.
 - Resolves missing, `auto`, invalid, and `legacy` preferences to Normal skills.
 - Does not install or repair plugins merely because a runtime supports them.
+- With stored `plugin` consent, repairs same-version missing, disabled, stale-version,
+  stale-source, orphan-cache, and actionable provider inspection states.
 
 `ck doctor`:
 
@@ -144,6 +158,15 @@ Repair rules:
   Codex plugin state.
 - Warns when preference and live state disagree.
 - Warns when copied skills and plugin state can both expose CK skills.
+- Treats Codex inspection errors as actionable rather than passing the row.
+- With `--check-only`, exits `1` for failures or warnings in text, JSON, and report modes.
+
+`ck uninstall`:
+
+- Global Engineer uninstall removes the owned Claude and Codex plugins, their `claudekit`
+  marketplace state, and stale Claude cache, then verifies absence.
+- Cleanup is idempotent; residual or unverifiable provider state prevents a success result.
+- Local-only and Marketing-only uninstall leave global Engineer plugin state unchanged.
 
 ## Release Boundary
 

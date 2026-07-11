@@ -50,7 +50,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
 		const generator = new ReportGenerator();
 		console.log(generator.generateJsonReport(summary));
 		// Use exitCode instead of exit() to allow stdout to flush properly
-		process.exitCode = summary.failed > 0 && checkOnly ? 1 : 0;
+		process.exitCode = checkOnly && hasActionableDoctorFindings(summary) ? 1 : 0;
 		return;
 	}
 
@@ -63,6 +63,9 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
 		const gistResult = await generator.uploadToGist(textReport);
 		if (gistResult) {
 			logger.info(`Report uploaded: ${gistResult.url}`);
+		}
+		if (checkOnly) {
+			process.exitCode = hasActionableDoctorFindings(summary) ? 1 : 0;
 		}
 		return;
 	}
@@ -80,15 +83,17 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
 				healSummary.succeeded > 0 ? await createDoctorRunner(runnerOptions).run() : summary;
 			renderer.renderResults(finalSummary);
 
-			if (checkOnly && finalSummary.failed > 0) {
+			if (checkOnly && hasActionableDoctorFindings(finalSummary)) {
 				process.exitCode = 1;
 			}
 
 			if (healSummary.failed > 0) {
 				process.exitCode = 1;
 				outro(`${healSummary.failed} auto-fix attempt(s) failed`);
-			} else if (finalSummary.failed === 0) {
+			} else if (finalSummary.failed === 0 && finalSummary.warnings === 0) {
 				outro(healSummary.succeeded > 0 ? "All fixable issues resolved!" : "All checks passed!");
+			} else if (finalSummary.failed === 0) {
+				outro(`${finalSummary.warnings} warning(s) remain after auto-heal`);
 			} else {
 				outro(`${finalSummary.failed} issue(s) remain after auto-heal`);
 			}
@@ -103,7 +108,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
 	renderer.renderResults(summary);
 
 	// Handle --check-only mode exit code
-	if (checkOnly && summary.failed > 0) {
+	if (checkOnly && hasActionableDoctorFindings(summary)) {
 		process.exitCode = 1;
 	}
 
@@ -126,11 +131,20 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
 	}
 
 	// Outro
-	if (summary.failed === 0) {
+	if (summary.failed === 0 && summary.warnings === 0) {
 		outro("All checks passed!");
+	} else if (summary.failed === 0) {
+		outro(`${summary.warnings} warning(s) found`);
 	} else {
 		outro(`${summary.failed} issue(s) found`);
 	}
+}
+
+export function hasActionableDoctorFindings(summary: {
+	failed: number;
+	warnings: number;
+}): boolean {
+	return summary.failed > 0 || summary.warnings > 0;
 }
 
 function createDoctorRunner(options: CheckRunnerOptions): CheckRunner {

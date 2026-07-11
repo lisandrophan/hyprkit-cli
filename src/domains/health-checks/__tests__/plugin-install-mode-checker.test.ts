@@ -172,7 +172,7 @@ describe("PluginInstallModeChecker", () => {
 		});
 
 		expect(r.status).toBe("warn");
-		expect(r.message).toContain("Codex plugin requires refresh");
+		expect(r.message).toContain("Codex plugin requires repair");
 		expect(r.message).toContain("Codex plugin: installed-stale-version, 2.20.1-beta.6");
 	});
 
@@ -224,7 +224,89 @@ describe("PluginInstallModeChecker", () => {
 			expectedVersion: "2.20.1-beta.7",
 			expectedMarketplace: "claudekit",
 		});
-		expect((seen[0] as { expectedSource?: string }).expectedSource).toContain("ck-plugin-source");
+		expect((seen[0] as { expectedSource?: string }).expectedSource).toEndWith(
+			join("ck-plugin-source", ".claude"),
+		);
+	});
+
+	test.each([
+		["unknown", false, false],
+		["missing", false, false],
+		["disabled", true, false],
+		["installed-stale-version", true, true],
+		["installed-stale-source", true, true],
+	] as const)(
+		"plugin preference reports Codex %s as actionable",
+		async (status, installed, refresh) => {
+			await writeMetadata({
+				kits: {
+					engineer: {
+						version: "2.20.1-beta.7",
+						installedAt: "x",
+						installModePreference: "plugin",
+					},
+				},
+			});
+			await writeSettings({ "ck@claudekit": true });
+
+			const r = await single({
+				...codexUnavailable,
+				status,
+				installed,
+				enabled: status !== "disabled" && installed,
+				shouldRefresh: refresh,
+				...(status === "unknown" ? { error: "inspection failed" } : {}),
+			});
+
+			expect(r.status).toBe("warn");
+			expect(r.message).toContain(
+				status === "unknown" ? "Codex plugin inspection failed" : "Codex plugin requires repair",
+			);
+		},
+	);
+
+	test("Codex inspection exception is never reported as pass for plugin preference", async () => {
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.20.1-beta.7",
+					installedAt: "x",
+					installModePreference: "plugin",
+				},
+			},
+		});
+		await writeSettings({ "ck@claudekit": true });
+
+		const [result] = await new PluginInstallModeChecker(claudeDir, {
+			detectCodexPluginState: async () => {
+				throw new Error("inspection failed");
+			},
+		}).run();
+
+		expect(result.status).toBe("warn");
+		expect(result.message).toContain("inspection failed");
+	});
+
+	test("Codex inspection exception is never reported as pass for Normal preference", async () => {
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.20.1-beta.7",
+					installedAt: "x",
+					installModePreference: "legacy",
+				},
+			},
+		});
+
+		const [result] = await new PluginInstallModeChecker(claudeDir, {
+			detectCodexPluginState: async () => {
+				throw new Error("inspection failed");
+			},
+		}).run();
+
+		expect(result.status).toBe("warn");
+		expect(result.message).toContain("Codex plugin inspection failed");
+		expect(result.message).toContain("inspection failed");
 	});
 
 	test("warns when legacy preference still has an active Codex plugin", async () => {

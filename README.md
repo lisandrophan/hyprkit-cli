@@ -253,6 +253,14 @@ ck migrate --agent codex
 Switching modes removes only ClaudeKit-owned plugin or copied-skill state. ClaudeKit
 backs up managed copied files before replacing them, preserves user-modified files, and
 verifies the selected surface before removing CK-owned plugin registrations or cache.
+Normal copies expose skills as `ck:<name>`; the canonical plugin payload keeps bare skill
+names because Claude and Codex apply the `ck` plugin namespace themselves. Plugin staging
+is transactional: a validated replacement is activated with the prior source retained
+until both provider preparations succeed, then committed or rolled back together.
+
+For stored plugin consent, `ck update` repairs unhealthy state even when the Engineer
+version is unchanged. This includes missing, disabled, stale-version, stale-source, and
+orphaned Claude state, plus actionable Codex inspection or lifecycle drift.
 
 > Stable `4.5.2` predates the short-lived plugin-default change. This contract reverses
 > only the affected development prereleases; stable users retain the normal-skills behavior.
@@ -316,7 +324,7 @@ ck doctor --report
 # Auto-fix all fixable issues
 ck doctor --fix
 
-# CI mode: no prompts, exit 1 on failures
+# CI mode: no prompts, exit 1 on failures or actionable warnings
 ck doctor --check-only
 
 # Machine-readable JSON output
@@ -348,7 +356,7 @@ ck doctor --verbose --fix
 
 **Exit Codes:**
 - `0`: All checks pass or issues fixed
-- `1`: Failures detected (only with `--check-only`)
+- `1`: Failures, actionable warnings, or provider inspection errors detected with `--check-only`
 
 > **Note:** `ck diagnose` is deprecated. Use `ck doctor` instead.
 
@@ -383,6 +391,10 @@ ck uninstall --yes        # Non-interactive - skip confirmation (for scripts)
 - Shows paths before deletion
 - Requires confirmation (unless `--yes` flag)
 - Removes ClaudeKit subdirectories (`commands/`, `agents/`, `skills/`, `workflows/`, `hooks/`, `metadata.json`)
+- For global Engineer scope, removes and verifies the owned Claude and Codex plugins and
+  `claudekit` marketplace state. Repeated cleanup is an idempotent no-op; unverifiable or
+  residual provider state prevents a false success result.
+- Local-only and Marketing-only uninstall do not change global Engineer plugin state.
 - **Preserves user configs** like `settings.json`, `settings.local.json`, and `CLAUDE.md`
 
 **Note:** Only removes valid ClaudeKit installations (with metadata.json). Regular `.claude` directories from Claude Desktop are not affected.

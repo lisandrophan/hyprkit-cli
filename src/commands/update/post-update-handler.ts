@@ -19,6 +19,10 @@ import {
 	repairMissingHookFileReferences,
 } from "@/domains/health-checks/checkers/hook-health-checker.js";
 import {
+	type ClaudePluginHealthOptions,
+	detectClaudePluginHealth,
+} from "@/domains/installation/plugin/claude-plugin-health.js";
+import {
 	type CodexPluginState,
 	type CodexPluginStateOptions,
 	detectCodexPluginState,
@@ -442,6 +446,7 @@ export interface PromptKitUpdateDeps {
 	hasTrackedPluginSuppliedLegacyFilesFn?: (claudeDir: string) => boolean;
 	shouldRefreshCodexPluginFn?: (options?: CodexPluginStateOptions) => Promise<boolean>;
 	detectCodexPluginStateFn?: (options?: CodexPluginStateOptions) => Promise<CodexPluginState>;
+	shouldRefreshClaudePluginFn?: (claudeDir: string, options?: ClaudePluginHealthOptions) => boolean;
 	cleanupStaleCodexConfigEntriesFn?: typeof cleanupStaleCodexConfigEntries;
 	skillsPackageManager?: SkillsPackageManager;
 }
@@ -507,6 +512,10 @@ export async function promptKitUpdate(
 		const detectCodexPluginStateFn =
 			deps?.detectCodexPluginStateFn ??
 			((options?: CodexPluginStateOptions) => detectCodexPluginState(undefined, options));
+		const shouldRefreshClaudePluginFn =
+			deps?.shouldRefreshClaudePluginFn ??
+			((claudeDir: string, options?: ClaudePluginHealthOptions) =>
+				detectClaudePluginHealth(claudeDir, options).shouldRefresh);
 		const cleanupStaleCodexConfigEntriesFn =
 			deps?.cleanupStaleCodexConfigEntriesFn ?? cleanupStaleCodexConfigEntries;
 		const setup = await getSetupFn();
@@ -651,6 +660,17 @@ export async function promptKitUpdate(
 						}
 					}
 					if (installModePreference !== "legacy") {
+						if (
+							shouldRefreshClaudePluginFn(selectedClaudeDir, {
+								expectedVersion: kitVersion,
+								expectedSource: join(PathResolver.getCacheDir(true), "ck-plugin-source"),
+							})
+						) {
+							logger.warning(
+								"Detected Claude Code plugin state requiring refresh; reinstalling global Engineer content",
+							);
+							forceKitReinstall = true;
+						}
 						try {
 							await cleanupStaleCodexConfigEntriesFn({ global: true, provider: "codex" });
 						} catch (error) {

@@ -8,6 +8,14 @@ import { logger } from "@/shared/logger.js";
 import type { Metadata } from "@/types";
 import { type TestPaths, setupTestPaths } from "../helpers/test-paths.js";
 
+const isolatedProviderCleanup = async () => ({
+	success: true,
+	changed: false,
+	claude: null,
+	codex: null,
+	errors: [],
+});
+
 describe("uninstall command integration", () => {
 	let testPaths: TestPaths;
 	let testProjectDir: string;
@@ -1257,16 +1265,19 @@ describe("uninstall command integration", () => {
 
 			// This will only work if the global path is properly detected
 			// For now, we test the local flag worked
-			await uninstallCommand({
-				yes: true,
-				json: false,
-				verbose: false,
-				local: false,
-				global: true,
-				all: false,
-				dryRun: false,
-				forceOverwrite: false,
-			});
+			await uninstallCommand(
+				{
+					yes: true,
+					json: false,
+					verbose: false,
+					local: false,
+					global: true,
+					all: false,
+					dryRun: false,
+					forceOverwrite: false,
+				},
+				{ cleanupEngineerProviderPlugins: isolatedProviderCleanup },
+			);
 
 			// Verify local was NOT removed
 			expect(existsSync(join(testLocalClaudeDir, "commands", "test.md"))).toBe(true);
@@ -1291,16 +1302,19 @@ describe("uninstall command integration", () => {
 
 			const { uninstallCommand } = await import("../../src/commands/uninstall/index.js");
 
-			await uninstallCommand({
-				yes: true,
-				json: false,
-				verbose: false,
-				local: true,
-				global: true,
-				all: false,
-				dryRun: false,
-				forceOverwrite: false,
-			});
+			await uninstallCommand(
+				{
+					yes: true,
+					json: false,
+					verbose: false,
+					local: true,
+					global: true,
+					all: false,
+					dryRun: false,
+					forceOverwrite: false,
+				},
+				{ cleanupEngineerProviderPlugins: isolatedProviderCleanup },
+			);
 
 			// Verify local was removed
 			expect(existsSync(join(testLocalClaudeDir, "commands", "test.md"))).toBe(false);
@@ -1326,16 +1340,19 @@ describe("uninstall command integration", () => {
 			const { uninstallCommand } = await import("../../src/commands/uninstall/index.js");
 
 			// Using --all flag (equivalent to --local --global)
-			await uninstallCommand({
-				yes: true,
-				json: false,
-				verbose: false,
-				local: false,
-				global: false,
-				all: true,
-				dryRun: false,
-				forceOverwrite: false,
-			});
+			await uninstallCommand(
+				{
+					yes: true,
+					json: false,
+					verbose: false,
+					local: false,
+					global: false,
+					all: true,
+					dryRun: false,
+					forceOverwrite: false,
+				},
+				{ cleanupEngineerProviderPlugins: isolatedProviderCleanup },
+			);
 
 			// Verify local was removed
 			expect(existsSync(join(testLocalClaudeDir, "commands", "test.md"))).toBe(false);

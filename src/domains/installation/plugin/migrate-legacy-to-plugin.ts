@@ -9,6 +9,11 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { detectClaudePluginHealth } from "@/domains/installation/plugin/claude-plugin-health.js";
+import {
+	type HistoricalTrackedFile,
+	collectEngineerHistoricalFiles,
+} from "@/domains/installation/plugin/historical-metadata-files.js";
 import {
 	ENGINEER_KIT_KEY,
 	type InstallMode,
@@ -57,6 +62,8 @@ export interface MigrateOptions {
 	removeLegacy?: LegacyRemover;
 	/** ISO timestamp; injected in tests, runtime passes new Date().toISOString(). */
 	now?: string;
+	/** Failure injection for the final receipt write. */
+	writeReceiptFn?: typeof writeReceipt;
 }
 
 export async function migrateLegacyToPlugin(opts: MigrateOptions): Promise<MigrateResult> {
@@ -66,12 +73,20 @@ export async function migrateLegacyToPlugin(opts: MigrateOptions): Promise<Migra
 	const ts = opts.now ?? new Date().toISOString();
 
 	const before = detectInstallMode(claudeDir);
+	let forceMarketplaceReplacement = false;
 
-	// Already plugin-only (no legacy copy left): nothing to do. "verified" reflects
-	// the detector's enable state, not an unconditional true.
+	// Plugin-only installs still need repair when disabled, stale, or registered
+	// against a previous staged source. Only a fully current install is a no-op.
 	if (before.mode === "plugin") {
-		prunePluginSuppliedLegacyFilesFromMetadata(claudeDir);
-		return base("noop-already-plugin", before.mode, before.plugin.enabled);
+		const health = detectClaudePluginHealth(claudeDir, {
+			expectedVersion: readExpectedPluginVersion(opts.pluginSourceDir),
+			expectedSource: opts.pluginSourceDir,
+		});
+		if (!health.shouldRefresh) {
+			prunePluginSuppliedLegacyFilesFromMetadata(claudeDir);
+			return base("noop-already-plugin", before.mode, true);
+		}
+		forceMarketplaceReplacement = health.status === "installed-stale-source";
 	}
 
 	// Older Claude Code without plugin support: return a precise result so explicit
@@ -83,8 +98,14 @@ export async function migrateLegacyToPlugin(opts: MigrateOptions): Promise<Migra
 	// Non-destructive: register/refresh marketplace + install/update + verify. Surface
 	// command failures early before removing the legacy copy.
 	const prepared = before.plugin.installed
-		? await refreshExistingPlugin(installer, opts.pluginSourceDir, before.plugin.enabled)
-		: await installPlugin(installer, opts.pluginSourceDir);
+		? await refreshExistingPlugin(
+				installer,
+				opts.pluginSourceDir,
+				before.plugin.enabled,
+				claudeDir,
+				forceMarketplaceReplacement,
+			)
+		: await installPlugin(installer, opts.pluginSourceDir, claudeDir);
 	if (!prepared.ok) {
 		return {
 			...base("install-failed", before.mode, false),
@@ -93,33 +114,51 @@ export async function migrateLegacyToPlugin(opts: MigrateOptions): Promise<Migra
 	}
 	const verified = await installer.verifyInstalled();
 	if (!verified) {
-		// Nothing destructive happened yet, so there is nothing to roll back.
+		prepared.rollback?.();
 		return {
 			...base("install-failed", before.mode, false),
 			error: "plugin did not verify after install",
 		};
 	}
 
-	// Destructive step runs ONLY after a verified install.
+	// Destructive file cleanup, metadata pruning, and receipt writing are one local
+	// transaction. Any late filesystem error restores copied files, metadata, the
+	// previous receipt, and the prior Claude registration.
 	let backupDir: string | null = null;
 	let removedPaths: string[] = [];
-	if (before.legacy.installed) {
-		backupDir = join(claudeDir, "backups", `ck-legacy-${ts.replace(/[:.]/g, "-")}`);
-		mkdirSync(backupDir, { recursive: true });
-		removedPaths = removeLegacy(claudeDir, backupDir);
-		prunePluginSuppliedLegacyFilesFromMetadata(claudeDir, removedPaths);
-	}
+	const metadataPath = join(claudeDir, "metadata.json");
+	const receiptFile = join(claudeDir, ".ck-migration-log.json");
+	const metadataSnapshot = snapshotFile(metadataPath);
+	const receiptSnapshot = snapshotFile(receiptFile);
+	let receiptPath: string;
+	try {
+		if (before.legacy.installed) {
+			backupDir = join(claudeDir, "backups", `ck-legacy-${ts.replace(/[:.]/g, "-")}`);
+			mkdirSync(backupDir, { recursive: true });
+			removedPaths = removeLegacy(claudeDir, backupDir);
+			prunePluginSuppliedLegacyFilesFromMetadata(claudeDir, removedPaths);
+		}
 
-	// Record the version that is now installed (post-install), not the pre-install one.
-	const installedVersion = detectPluginState(claudeDir).version;
-	const receiptPath = writeReceipt(claudeDir, {
-		fromMode: before.mode,
-		toMode: "plugin",
-		pluginVersion: installedVersion,
-		backupDir,
-		removedPaths,
-		timestamp: ts,
-	});
+		// Record the version that is now installed (post-install), not the pre-install one.
+		const installedVersion = detectPluginState(claudeDir).version;
+		receiptPath = (opts.writeReceiptFn ?? writeReceipt)(claudeDir, {
+			fromMode: before.mode,
+			toMode: "plugin",
+			pluginVersion: installedVersion,
+			backupDir,
+			removedPaths,
+			timestamp: ts,
+		});
+	} catch (error) {
+		if (backupDir) restoreLegacyBackup(claudeDir, backupDir, removedPaths);
+		restoreFile(metadataPath, metadataSnapshot);
+		restoreFile(receiptFile, receiptSnapshot);
+		prepared.rollback?.();
+		return {
+			...base("install-failed", before.mode, false),
+			error: `plugin migration transaction failed: ${(error as Error).message}`,
+		};
+	}
 
 	return {
 		action: before.legacy.installed ? "migrated-from-legacy" : "installed-fresh",
@@ -129,6 +168,11 @@ export async function migrateLegacyToPlugin(opts: MigrateOptions): Promise<Migra
 		removedPaths,
 		receiptPath,
 	};
+}
+
+function readExpectedPluginVersion(pluginSourceDir: string): string | null {
+	const manifest = readJsonSafe(join(pluginSourceDir, ".claude", ".claude-plugin", "plugin.json"));
+	return isRecord(manifest) && typeof manifest.version === "string" ? manifest.version : null;
 }
 
 function base(
@@ -156,7 +200,7 @@ const LEGACY_SENTINEL_FILENAMES = new Set([".gitignore"]);
  */
 export function defaultLegacyRemover(claudeDir: string, backupDir: string): string[] {
 	const meta = readJsonSafe(join(claudeDir, "metadata.json"));
-	const files = collectTrackedFiles(meta);
+	const files = collectEngineerHistoricalFiles(meta);
 	const removed: string[] = [];
 	for (const file of files) {
 		const legacyPath = resolveSafePluginSuppliedLegacyPath(claudeDir, file.path);
@@ -174,10 +218,24 @@ export function defaultLegacyRemover(claudeDir: string, backupDir: string): stri
 function backupAndRemove(backupDir: string, relativePath: string, abs: string): boolean {
 	const backupTarget = resolveSafeChildPath(backupDir, relativePath);
 	if (!backupTarget) return false;
-	mkdirSync(dirname(backupTarget), { recursive: true });
-	cpSync(abs, backupTarget, { recursive: true });
-	rmSync(abs, { recursive: true, force: true });
-	return true;
+	try {
+		mkdirSync(dirname(backupTarget), { recursive: true });
+		cpSync(abs, backupTarget, { recursive: true });
+		rmSync(abs, { recursive: true, force: true });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function restoreLegacyBackup(claudeDir: string, backupDir: string, removedPaths: string[]): void {
+	for (const pathValue of removedPaths) {
+		const source = resolveSafeChildPath(backupDir, pathValue);
+		const target = resolveSafeChildPath(claudeDir, pathValue);
+		if (!source || !target || !existsSync(source)) continue;
+		mkdirSync(dirname(target), { recursive: true });
+		cpSync(source, target, { recursive: true });
+	}
 }
 
 function removeOrphanLegacySentinels(
@@ -266,10 +324,9 @@ function directoryContainsOnlySentinels(dir: string): boolean {
 	return true;
 }
 
-function isSafeToRemovePluginSuppliedLegacyFile(file: TrackedFile, abs: string): boolean {
-	if (file.ownership !== "user") {
-		return true;
-	}
+function isSafeToRemovePluginSuppliedLegacyFile(file: HistoricalTrackedFile, abs: string): boolean {
+	if (file.ownership === "ck") return true;
+	if (file.ownership !== "user") return false;
 
 	// Offline/local kit installs can lack release-manifest.json, so files are
 	// tracked as user-owned even though the installer just copied them. Remove
@@ -341,42 +398,6 @@ function compareLegacyPaths(a: string, b: string): number {
 	return 0;
 }
 
-interface TrackedFile {
-	path: string;
-	ownership: "ck" | "ck-modified" | "user";
-	checksum?: string;
-}
-
-function collectTrackedFiles(meta: unknown): TrackedFile[] {
-	if (!isRecord(meta)) return [];
-	const out: TrackedFile[] = [];
-	const push = (arr: unknown) => {
-		if (!Array.isArray(arr)) return;
-		for (const f of arr) {
-			if (isRecord(f) && typeof f.path === "string") {
-				const ownership =
-					f.ownership === "user" || f.ownership === "ck-modified" ? f.ownership : "ck";
-				out.push({
-					path: f.path,
-					ownership,
-					checksum: typeof f.checksum === "string" ? f.checksum : undefined,
-				});
-			}
-		}
-	};
-	// Engineer-scoped ONLY: this migration must never touch other kits' files.
-	if (isRecord(meta.kits)) {
-		// Multi-kit format: only the engineer kit's tracked files.
-		const engineer = (meta.kits as Record<string, unknown>)[ENGINEER_KIT_KEY];
-		if (isRecord(engineer)) push(engineer.files);
-	} else {
-		// Legacy single-kit format (no kits{}): root files belong to the only installed
-		// kit, and migration is gated to the engineer kit by the caller.
-		push(meta.files);
-	}
-	return out;
-}
-
 function prunePluginSuppliedLegacyFilesFromMetadata(
 	claudeDir: string,
 	removedPaths?: string[],
@@ -393,6 +414,13 @@ function prunePluginSuppliedLegacyFilesFromMetadata(
 	const pruneFiles = (files: unknown): unknown => {
 		if (!Array.isArray(files)) return files;
 		const pruned = files.filter((file) => {
+			if (typeof file === "string") {
+				const normalizedPath = normalizeComparableLegacyPath(file);
+				return !(
+					isPluginSuppliedLegacyPath(normalizedPath) &&
+					resolveSafePluginSuppliedLegacyPath(claudeDir, normalizedPath) !== null
+				);
+			}
 			if (!isRecord(file) || typeof file.path !== "string") return true;
 			const normalizedPath = normalizeComparableLegacyPath(file.path);
 			const resolvedPath = resolveSafePluginSuppliedLegacyPath(claudeDir, normalizedPath);
@@ -410,6 +438,7 @@ function prunePluginSuppliedLegacyFilesFromMetadata(
 		const engineer = (meta.kits as Record<string, unknown>)[ENGINEER_KIT_KEY];
 		if (isRecord(engineer)) {
 			engineer.files = pruneFiles(engineer.files);
+			engineer.installedFiles = pruneFiles(engineer.installedFiles);
 		}
 	} else {
 		meta.files = pruneFiles(meta.files);
@@ -454,54 +483,145 @@ function readJsonSafe(filePath: string): unknown {
 	}
 }
 
+function snapshotFile(filePath: string): Buffer | null {
+	return existsSync(filePath) ? readFileSync(filePath) : null;
+}
+
+function restoreFile(filePath: string, content: Buffer | null): void {
+	if (content === null) {
+		rmSync(filePath, { force: true });
+		return;
+	}
+	mkdirSync(dirname(filePath), { recursive: true });
+	writeFileSync(filePath, content);
+}
+
 interface PluginPrepareResult {
 	ok: boolean;
 	error?: string;
+	rollback?: () => void;
 }
 
 async function installPlugin(
 	installer: PluginInstaller,
 	pluginSourceDir: string,
+	claudeDir: string,
 ): Promise<PluginPrepareResult> {
-	const added = await installer.marketplaceAdd(pluginSourceDir);
-	if (!added.ok) {
-		return { ok: false, error: `marketplace add failed: ${added.stderr.trim()}` };
-	}
+	const marketplace = await prepareClaudeMarketplace(installer, pluginSourceDir, claudeDir);
+	if (!marketplace.ok) return marketplace;
 	const installed = await installer.install("user");
 	if (!installed.ok) {
+		marketplace.rollback?.();
 		return { ok: false, error: `plugin install failed: ${installed.stderr.trim()}` };
 	}
-	return { ok: true };
+	return { ok: true, rollback: marketplace.rollback };
 }
 
 async function refreshExistingPlugin(
 	installer: PluginInstaller,
 	pluginSourceDir: string,
 	enabled: boolean,
+	claudeDir: string,
+	forceMarketplaceReplacement = false,
 ): Promise<PluginPrepareResult> {
-	const added = await installer.marketplaceAdd(pluginSourceDir);
-	if (!added.ok) {
-		const updatedMarketplace = await installer.marketplaceUpdate();
-		if (!updatedMarketplace.ok) {
-			return {
-				ok: false,
-				error: `marketplace refresh failed: ${updatedMarketplace.stderr.trim() || added.stderr.trim()}`,
-			};
-		}
-	}
+	const marketplace = await prepareClaudeMarketplace(
+		installer,
+		pluginSourceDir,
+		claudeDir,
+		forceMarketplaceReplacement,
+	);
+	if (!marketplace.ok) return marketplace;
 
 	if (!enabled) {
 		const enabledResult = await installer.enable();
 		if (!enabledResult.ok) {
+			marketplace.rollback?.();
 			return { ok: false, error: `plugin enable failed: ${enabledResult.stderr.trim()}` };
 		}
 	}
 
 	const updated = await installer.update();
 	if (!updated.ok) {
+		marketplace.rollback?.();
 		return { ok: false, error: `plugin update failed: ${updated.stderr.trim()}` };
 	}
-	return { ok: true };
+	return { ok: true, rollback: marketplace.rollback };
+}
+
+interface ClaudeRegistrationSnapshot {
+	files: Array<{ path: string; content: Buffer | null }>;
+}
+
+async function prepareClaudeMarketplace(
+	installer: PluginInstaller,
+	pluginSourceDir: string,
+	claudeDir: string,
+	forceReplacement = false,
+): Promise<PluginPrepareResult> {
+	const snapshot = snapshotClaudeRegistration(claudeDir);
+	const rollback = () => restoreClaudeRegistration(snapshot);
+	if (forceReplacement) {
+		const removed = await installer.marketplaceRemove();
+		if (!removed.ok) {
+			rollback();
+			return {
+				ok: false,
+				error: `marketplace replacement failed: ${removed.stderr.trim()}`,
+			};
+		}
+		const replaced = await installer.marketplaceAdd(pluginSourceDir);
+		if (replaced.ok) return { ok: true, rollback };
+		rollback();
+		return {
+			ok: false,
+			error: `marketplace replacement failed: ${replaced.stderr.trim()}; restored previous registration`,
+		};
+	}
+	const added = await installer.marketplaceAdd(pluginSourceDir);
+	if (added.ok) return { ok: true, rollback };
+
+	const updated = await installer.marketplaceUpdate();
+	if (updated.ok) return { ok: true, rollback };
+
+	const removed = await installer.marketplaceRemove();
+	if (!removed.ok) {
+		rollback();
+		return {
+			ok: false,
+			error: `marketplace replacement failed: ${removed.stderr.trim() || updated.stderr.trim() || added.stderr.trim()}`,
+		};
+	}
+	const replaced = await installer.marketplaceAdd(pluginSourceDir);
+	if (replaced.ok) return { ok: true, rollback };
+
+	rollback();
+	return {
+		ok: false,
+		error: `marketplace replacement failed: ${replaced.stderr.trim() || updated.stderr.trim() || added.stderr.trim()}; restored previous registration`,
+	};
+}
+
+function snapshotClaudeRegistration(claudeDir: string): ClaudeRegistrationSnapshot {
+	return {
+		files: [
+			join(claudeDir, "plugins", "known_marketplaces.json"),
+			join(claudeDir, "settings.json"),
+		].map((path) => ({
+			path,
+			content: existsSync(path) ? readFileSync(path) : null,
+		})),
+	};
+}
+
+function restoreClaudeRegistration(snapshot: ClaudeRegistrationSnapshot): void {
+	for (const file of snapshot.files) {
+		if (file.content === null) {
+			rmSync(file.path, { force: true });
+			continue;
+		}
+		mkdirSync(dirname(file.path), { recursive: true });
+		writeFileSync(file.path, file.content);
+	}
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

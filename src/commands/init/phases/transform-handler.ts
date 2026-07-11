@@ -6,6 +6,7 @@
 import { join } from "node:path";
 import { ConfigManager } from "@/domains/config/config-manager.js";
 import { CommandsPrefix } from "@/services/transformers/commands-prefix.js";
+import { projectEngineerSkillNamesForInstall } from "@/services/transformers/engineer-legacy-skill-name-projector.js";
 import {
 	transformFolderPaths,
 	validateFolderOptions,
@@ -36,6 +37,18 @@ export async function handleTransforms(ctx: InitContext): Promise<InitContext> {
 		});
 		logger.success(
 			`Transformed ${transformResult.totalChanges} path(s) in ${transformResult.filesTransformed} file(s)`,
+		);
+	}
+
+	// Native plugin runtimes apply the `ck` namespace to canonical bare skill names.
+	// Normal installs need that namespace projected onto their temporary copied payload.
+	const skillProjection = await projectEngineerSkillNamesForInstall(ctx.extractDir, {
+		kitType: ctx.kitType,
+		installMode: ctx.options.installMode,
+	});
+	if (skillProjection.skillsProjected > 0) {
+		logger.success(
+			`Projected ${skillProjection.skillsProjected} Engineer skill name(s) for Normal installation`,
 		);
 	}
 

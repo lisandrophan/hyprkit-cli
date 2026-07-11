@@ -181,6 +181,7 @@ describe("promptKitUpdate auto-init behavior", () => {
 			isCancelFn: isCancelMock,
 			detectInstallModeFn: () => makeInstallModeReport(tempDir, "plugin"),
 			hasTrackedPluginSuppliedLegacyFilesFn: () => false,
+			shouldRefreshClaudePluginFn: () => false,
 			shouldRefreshCodexPluginFn: async () => false,
 			detectCodexPluginStateFn: async () => ({
 				status: "missing",
@@ -358,6 +359,42 @@ describe("promptKitUpdate auto-init behavior", () => {
 		expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
 		expect(capturedSpawnArgs()).toContain("plugin");
 	});
+
+	test("reinstalls a same-version plugin install when Claude plugin health requires repair", async () => {
+		await writeMetadata(tempDir, "1.0.0", "plugin");
+		const { deps, spawnCount, capturedSpawnArgs } = makeDeps();
+		deps.getLatestReleaseTagFn = async () => "v1.0.0";
+		let seen: unknown;
+		deps.shouldRefreshClaudePluginFn = (_claudeDir, options) => {
+			seen = options;
+			return true;
+		};
+
+		await promptKitUpdate(false, true, deps);
+
+		expect(spawnCount()).toBe(1);
+		expect(capturedSpawnArgs()).toContain("plugin");
+		expect(seen).toMatchObject({
+			expectedVersion: "1.0.0",
+			expectedSource: join(testHome, ".cache", "claude", "ck-plugin-source"),
+		});
+	});
+
+	test.each(["missing", "orphan-cache", "disabled", "stale-version", "stale-source"])(
+		"routes same-version Claude %s health through explicit plugin repair",
+		async () => {
+			await writeMetadata(tempDir, "1.0.0", "plugin");
+			const { deps, spawnCount, capturedSpawnArgs } = makeDeps();
+			deps.getLatestReleaseTagFn = async () => "v1.0.0";
+			deps.shouldRefreshClaudePluginFn = () => true;
+
+			await promptKitUpdate(false, true, deps);
+
+			expect(spawnCount()).toBe(1);
+			expect(capturedSpawnArgs()).toContain("--install-mode");
+			expect(capturedSpawnArgs()).toContain("plugin");
+		},
+	);
 
 	test("cleans Codex config before checking stable plugin source (--yes mode)", async () => {
 		await writeMetadata(tempDir, "1.0.0", "plugin");

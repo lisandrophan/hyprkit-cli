@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
-import { normalize, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
 	CK_MARKETPLACE_NAME,
@@ -137,10 +137,22 @@ export interface CodexPluginInstallResult {
 	error?: string;
 }
 
+export interface CodexPluginRollbackResult {
+	ok: boolean;
+	detail: string;
+}
+
+export interface CodexPluginPreparation {
+	result: CodexPluginInstallResult;
+	commit(): void;
+	rollback(): Promise<CodexPluginRollbackResult>;
+}
+
 export interface RemoveCodexPluginResult {
 	removed: boolean;
 	marketplaceRemoved: boolean;
 	pluginStillInstalled?: boolean;
+	verificationStatus?: CodexPluginStatus;
 	error?: string;
 }
 
@@ -245,26 +257,28 @@ function classifyCodexPluginEntry(
 	options: CodexPluginStateOptions = {},
 ): CodexPluginState {
 	if (!entry) return createState("missing", null, options);
-	if (!entry.enabled || !entry.installed) return createState("disabled", entry, options);
+	if (!entry.installed) return createState("disabled", entry, options);
 
 	const expectedMarketplace = options.expectedMarketplace ?? CK_MARKETPLACE_NAME;
-	if (entry.marketplace && entry.marketplace !== expectedMarketplace) {
+	if (
+		options.expectedMarketplace &&
+		(!entry.marketplace || entry.marketplace !== expectedMarketplace)
+	) {
 		return createState("installed-stale-source", entry, options);
 	}
 	if (
 		options.expectedSource &&
-		entry.source &&
-		!pluginSourceMatches(entry.source, options.expectedSource)
+		(!entry.source || !pluginSourceMatches(entry.source, options.expectedSource))
 	) {
 		return createState("installed-stale-source", entry, options);
 	}
 	if (
 		options.expectedVersion &&
-		entry.version &&
-		!versionsMatch(entry.version, options.expectedVersion)
+		(!entry.version || !versionsMatch(entry.version, options.expectedVersion))
 	) {
 		return createState("installed-stale-version", entry, options);
 	}
+	if (!entry.enabled) return createState("disabled", entry, options);
 
 	return createState("installed-current", entry, options);
 }
@@ -419,66 +433,220 @@ async function detectCodexPluginListState(
 export async function installCodexPlugin(
 	opts: InstallCodexPluginOptions,
 ): Promise<CodexPluginInstallResult> {
+	const preparation = await prepareCodexPlugin(opts);
+	preparation.commit();
+	return preparation.result;
+}
+
+export async function prepareCodexPlugin(
+	opts: InstallCodexPluginOptions,
+): Promise<CodexPluginPreparation> {
 	const installer = opts.installer ?? new CodexPluginInstaller(undefined, opts.codexHome);
 
 	if (!(await installer.isCodexAvailable()) || !(await installer.isPluginSupported())) {
-		return { action: "skipped-codex-unsupported", pluginVerified: false };
+		return inertPreparation({ action: "skipped-codex-unsupported", pluginVerified: false });
 	}
 
 	const added = await addOrReplaceMarketplace(installer, opts.pluginSourceDir);
 	if (!added.ok) {
-		return {
+		return inertPreparation({
 			action: "install-failed",
 			pluginVerified: false,
 			error: added.error,
-		};
+		});
 	}
 
 	const installed = await installer.add();
 	if (!installed.ok) {
-		return {
+		const rollback = added.rollback ? await added.rollback() : null;
+		return inertPreparation({
 			action: "install-failed",
 			pluginVerified: false,
-			error: `codex plugin add failed: ${installed.stderr.trim()}`,
-		};
+			error: appendRollback(`codex plugin add failed: ${installed.stderr.trim()}`, rollback),
+		});
 	}
 
 	const verified = await installer.verifyInstalled();
 	if (!verified) {
-		return {
+		const rollback = added.rollback ? await added.rollback() : null;
+		return inertPreparation({
 			action: "install-failed",
 			pluginVerified: false,
-			error: "codex plugin did not verify after install",
-		};
+			error: appendRollback("codex plugin did not verify after install", rollback),
+		});
 	}
+	return activePreparation(
+		{ action: "installed", pluginVerified: true },
+		added.rollback ?? (async () => "no Codex marketplace change required"),
+	);
+}
 
-	return { action: "installed", pluginVerified: true };
+function inertPreparation(result: CodexPluginInstallResult): CodexPluginPreparation {
+	return {
+		result,
+		commit: () => {},
+		rollback: async () => ({ ok: true, detail: "Codex preparation already settled" }),
+	};
+}
+
+function activePreparation(
+	result: CodexPluginInstallResult,
+	rollbackAction: () => Promise<string>,
+): CodexPluginPreparation {
+	let active = true;
+	return {
+		result,
+		commit: () => {
+			active = false;
+		},
+		rollback: async () => {
+			if (!active) return { ok: true, detail: "Codex preparation already committed" };
+			active = false;
+			const detail = await rollbackAction();
+			return { ok: !/failed/i.test(detail), detail };
+		},
+	};
 }
 
 async function addOrReplaceMarketplace(
 	installer: CodexPluginInstaller,
 	pluginSourceDir: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; rollback?: () => Promise<string> } | { ok: false; error: string }> {
 	const added = await installer.marketplaceAdd(pluginSourceDir);
-	if (added.ok) return { ok: true };
+	if (added.ok) {
+		return {
+			ok: true,
+			rollback: () => removePreparedMarketplace(installer),
+		};
+	}
 
 	const error = added.stderr.trim();
-	if (!isReplaceableMarketplaceAddFailure(error)) {
+	if (!isMarketplaceAlreadyRegistered(error)) {
 		return { ok: false, error: `codex marketplace add failed: ${error}` };
 	}
 
-	await installer.marketplaceRemove(CK_MARKETPLACE_NAME);
+	const previousState = await detectCodexPluginListState(installer, {
+		expectedSource: join(pluginSourceDir, ".claude"),
+	});
+	const recoveredMarketplaceSource = marketplaceSourceFromAddError(error);
+	if (previousState.status === "unknown" && !recoveredMarketplaceSource) {
+		return {
+			ok: false,
+			error: `codex marketplace refresh skipped: registration is irrecoverably unknown because no safe previous source was reported (${previousState.error ?? error})`,
+		};
+	}
+	if (previousState.installed && previousState.status !== "installed-stale-source") {
+		return {
+			ok: true,
+			rollback: () => reloadMarketplaceAndPlugin(installer, pluginSourceDir),
+		};
+	}
+	const isStaleSource =
+		previousState.status === "installed-stale-source" ||
+		(previousState.status === "unknown" && recoveredMarketplaceSource !== null) ||
+		hasDifferentMarketplaceSource(error);
+	if (!isStaleSource) {
+		return {
+			ok: true,
+			rollback: () => reloadMarketplaceAndPlugin(installer, pluginSourceDir),
+		};
+	}
+
+	const previousMarketplaceSource =
+		marketplaceRootFromPluginSource(previousState.source) ?? recoveredMarketplaceSource;
+	if (!previousMarketplaceSource) {
+		return {
+			ok: false,
+			error: `codex marketplace refresh skipped: previous source could not be determined safely (${error})`,
+		};
+	}
+	const removed = await installer.marketplaceRemove(CK_MARKETPLACE_NAME);
+	if (!removed.ok) {
+		return {
+			ok: false,
+			error: `codex marketplace remove failed: ${removed.stderr.trim() || error}`,
+		};
+	}
 	const readded = await installer.marketplaceAdd(pluginSourceDir);
-	if (readded.ok) return { ok: true };
+	const rollback = async (): Promise<string> => {
+		await installer.marketplaceRemove(CK_MARKETPLACE_NAME);
+		const restored = await installer.marketplaceAdd(previousMarketplaceSource);
+		if (!restored.ok) {
+			return `rollback failed: ${restored.stderr.trim() || "previous marketplace could not be restored"}`;
+		}
+		if (previousState.installed || previousState.status === "unknown") {
+			const pluginRestored = await installer.add();
+			if (!pluginRestored.ok) {
+				return `marketplace restored but plugin rollback failed: ${pluginRestored.stderr.trim()}`;
+			}
+		}
+		return "restored previous marketplace and plugin state";
+	};
+	if (readded.ok) return { ok: true, rollback };
+
+	const rollbackDetail = await rollback();
 
 	return {
 		ok: false,
-		error: `codex marketplace refresh failed: ${readded.stderr.trim() || error}`,
+		error: `codex marketplace refresh failed: ${readded.stderr.trim() || error}; ${rollbackDetail}`,
 	};
 }
 
-function isReplaceableMarketplaceAddFailure(error: string): boolean {
+async function removePreparedMarketplace(installer: CodexPluginInstaller): Promise<string> {
+	const removedPlugin = await installer.remove();
+	const removedMarketplace = await installer.marketplaceRemove(CK_MARKETPLACE_NAME);
+	return removedPlugin.ok && removedMarketplace.ok
+		? "removed newly prepared Codex plugin and marketplace"
+		: `Codex rollback failed: ${removedPlugin.stderr.trim() || removedMarketplace.stderr.trim() || "cleanup did not verify"}`;
+}
+
+async function reloadMarketplaceAndPlugin(
+	installer: CodexPluginInstaller,
+	source: string,
+): Promise<string> {
+	await installer.remove();
+	const removedMarketplace = await installer.marketplaceRemove(CK_MARKETPLACE_NAME);
+	if (!removedMarketplace.ok) {
+		return `Codex rollback failed: ${removedMarketplace.stderr.trim() || "marketplace removal failed"}`;
+	}
+	const restoredMarketplace = await installer.marketplaceAdd(source);
+	if (!restoredMarketplace.ok) {
+		return `Codex rollback failed: ${restoredMarketplace.stderr.trim() || "marketplace restore failed"}`;
+	}
+	const restoredPlugin = await installer.add();
+	return restoredPlugin.ok
+		? "reloaded previous Codex marketplace and plugin state"
+		: `Codex rollback failed: ${restoredPlugin.stderr.trim() || "plugin restore failed"}`;
+}
+
+function isMarketplaceAlreadyRegistered(error: string): boolean {
 	return /\balready\b/i.test(error) && /\bmarketplace\b/i.test(error);
+}
+
+function hasDifferentMarketplaceSource(error: string): boolean {
+	return /\bdifferent\s+source\b/i.test(error);
+}
+
+function marketplaceRootFromPluginSource(source: string | null): string | null {
+	if (!source) return null;
+	const trimmed = source.trim();
+	if (!trimmed || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return null;
+	const normalized = normalize(trimmed);
+	if (!isAbsolute(normalized)) return null;
+	return basename(normalized) === ".claude" ? dirname(normalized) : normalized;
+}
+
+function marketplaceSourceFromAddError(error: string): string | null {
+	const unixPath = error.match(/(?:from|source(?:\s+is)?)[\s:=]+["']?(\/[^"'\r\n;]+)/i)?.[1];
+	const windowsPath = error.match(
+		/(?:from|source(?:\s+is)?)[\s:=]+["']?([A-Za-z]:[\\/][^"'\r\n;]+)/i,
+	)?.[1];
+	const candidate = (windowsPath ?? unixPath)?.trim().replace(/[),.]+$/, "") ?? null;
+	return marketplaceRootFromPluginSource(candidate);
+}
+
+function appendRollback(error: string, rollback: string | null): string {
+	return rollback ? `${error}; ${rollback}` : error;
 }
 
 export async function removeCodexPlugin(
@@ -486,21 +654,51 @@ export async function removeCodexPlugin(
 ): Promise<RemoveCodexPluginResult> {
 	const installer = opts.installer ?? new CodexPluginInstaller(undefined, opts.codexHome);
 
-	if (!(await installer.isCodexAvailable()) || !(await installer.isPluginSupported())) {
-		return { removed: false, marketplaceRemoved: false };
+	if (!(await installer.isCodexAvailable())) {
+		return {
+			removed: false,
+			marketplaceRemoved: false,
+			verificationStatus: "codex-unavailable",
+			error: "Codex is unavailable; persisted plugin and marketplace absence cannot be verified",
+		};
+	}
+	if (!(await installer.isPluginSupported())) {
+		return {
+			removed: false,
+			marketplaceRemoved: false,
+			verificationStatus: "plugins-unsupported",
+			error:
+				"Codex plugin commands are unsupported; persisted plugin and marketplace absence cannot be verified",
+		};
 	}
 
 	const removed = await installer.remove();
 	const marketplaceRemoved = await installer.marketplaceRemove();
 	const state = await detectCodexPluginListState(installer);
+	const errors: string[] = [];
+	if (!marketplaceRemoved.ok && !isAlreadyAbsentMarketplace(marketplaceRemoved.stderr)) {
+		errors.push(
+			`codex marketplace removal failed: ${marketplaceRemoved.stderr.trim() || "command did not succeed"}`,
+		);
+	}
+	if (state.status === "unknown") {
+		errors.push(
+			`codex plugin absence could not be verified: ${state.error ?? "inspection failed"}`,
+		);
+	} else if (state.installed) {
+		errors.push(`codex plugin still installed after removal (${state.status})`);
+	}
 	return {
 		removed: removed.ok,
 		marketplaceRemoved: marketplaceRemoved.ok,
 		pluginStillInstalled: state.installed,
-		...(state.installed
-			? { error: `codex plugin still installed after removal (${state.status})` }
-			: {}),
+		...(state.status === "unknown" ? { verificationStatus: state.status } : {}),
+		...(errors.length > 0 ? { error: errors.join("; ") } : {}),
 	};
+}
+
+function isAlreadyAbsentMarketplace(error: string): boolean {
+	return /\bnot\s+found\b|\bdoes\s+not\s+exist\b|\bnot\s+registered\b/i.test(error);
 }
 
 export async function shouldRefreshCodexPlugin(
