@@ -22,6 +22,10 @@ import {
 	detectInstallMode,
 	detectPluginState,
 } from "@/domains/installation/plugin/install-mode-detector.js";
+import {
+	collectOrphanedPluginLegacyFileProofs,
+	orphanedPluginLegacyFileProofMatches,
+} from "@/domains/installation/plugin/orphaned-plugin-legacy-files.js";
 import { PluginInstaller } from "@/domains/installation/plugin/plugin-installer.js";
 import { PathResolver } from "@/shared/path-resolver.js";
 
@@ -249,6 +253,18 @@ export function defaultLegacyRemover(
 		// Back up before removing.
 		if (!backupAndRemove(claudeDir, backupDir, legacyPath.relativePath, legacyPath.absolutePath))
 			continue;
+		removed.push(legacyPath.relativePath);
+	}
+	for (const proof of collectOrphanedPluginLegacyFileProofs(
+		claudeDir,
+		files.map((file) => file.path),
+	)) {
+		if (!orphanedPluginLegacyFileProofMatches(claudeDir, proof)) continue;
+		const legacyPath = resolveSafePluginSuppliedLegacyPath(claudeDir, proof.relativePath);
+		if (!legacyPath || !existsSync(legacyPath.absolutePath)) continue;
+		if (!backupAndRemove(claudeDir, backupDir, legacyPath.relativePath, legacyPath.absolutePath)) {
+			continue;
+		}
 		removed.push(legacyPath.relativePath);
 	}
 	removed.push(...removeOrphanLegacySentinels(claudeDir, backupDir, removed));
