@@ -644,6 +644,113 @@ describe("migrateLegacyToPlugin (orchestration)", () => {
 		expect(detectInstallMode(claudeDir).legacy.installed).toBe(false);
 	});
 
+	test("metadata-free historical cache matches are backed up and removed while edits survive", async () => {
+		const pluginSourceDir = join(claudeDir, "staged-source");
+		const cacheRoot = join(claudeDir, "plugins", "cache", "claudekit", "ck", "2.20.1-beta.5");
+		const matchedPath = "skills/gemini-research/SKILL.md";
+		const editedPath = "skills/cook/SKILL.md";
+		await mkdir(join(cacheRoot, "skills", "gemini-research"), { recursive: true });
+		await mkdir(join(cacheRoot, "skills", "cook"), { recursive: true });
+		await mkdir(join(cacheRoot, ".claude-plugin"), { recursive: true });
+		await mkdir(join(claudeDir, "skills", "gemini-research"), { recursive: true });
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await mkdir(join(pluginSourceDir, ".claude", ".claude-plugin"), { recursive: true });
+		await writeFile(join(cacheRoot, matchedPath), "retired\n", "utf-8");
+		await writeFile(join(cacheRoot, editedPath), "original\n", "utf-8");
+		await writeFile(
+			join(cacheRoot, ".claude-plugin", "plugin.json"),
+			JSON.stringify({ name: "ck", version: "2.20.1-beta.5" }),
+			"utf-8",
+		);
+		await writeFile(join(claudeDir, matchedPath), "retired\n", "utf-8");
+		await writeFile(join(claudeDir, editedPath), "edited\n", "utf-8");
+		await writeFile(
+			join(pluginSourceDir, ".claude", ".claude-plugin", "plugin.json"),
+			JSON.stringify({ name: "ck", version: "2.20.1-beta.7" }),
+			"utf-8",
+		);
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.20.1-beta.7",
+					installedAt: "x",
+					installModePreference: "plugin",
+				},
+			},
+		});
+		await writeSettings({ "ck@claudekit": true });
+		await writeMarketplace(pluginSourceDir);
+		const { installer } = fakeInstaller();
+
+		const result = await migrateLegacyToPlugin({
+			pluginSourceDir,
+			claudeDir,
+			installer,
+			now: TS,
+		});
+
+		expect(result.action).toBe("migrated-from-legacy");
+		expect(result.modeBefore).toBe("mixed");
+		expect(result.removedPaths).toEqual([matchedPath]);
+		expect(existsSync(join(claudeDir, matchedPath))).toBe(false);
+		expect(readFileSync(join(result.backupDir as string, matchedPath), "utf-8")).toBe("retired\n");
+		expect(readFileSync(join(claudeDir, editedPath), "utf-8")).toBe("edited\n");
+		expect(detectInstallMode(claudeDir).mode).toBe("plugin");
+	});
+
+	test.each(["absent", "malformed", "empty"] as const)(
+		"cache-proven ghosts migrate safely with %s metadata",
+		async (metadataState) => {
+			const version = "2.20.1-beta.5";
+			const pluginSourceDir = join(claudeDir, "staged-source");
+			const cacheRoot = join(claudeDir, "plugins", "cache", "claudekit", "ck", version);
+			const relativePath = "skills/retired/SKILL.md";
+			const metadataPath = join(claudeDir, "metadata.json");
+			await mkdir(join(cacheRoot, "skills", "retired"), { recursive: true });
+			await mkdir(join(cacheRoot, ".claude-plugin"), { recursive: true });
+			await mkdir(join(claudeDir, "skills", "retired"), { recursive: true });
+			await mkdir(join(pluginSourceDir, ".claude", ".claude-plugin"), { recursive: true });
+			await writeFile(join(cacheRoot, relativePath), "retired\n", "utf-8");
+			await writeFile(join(claudeDir, relativePath), "retired\n", "utf-8");
+			await writeFile(
+				join(cacheRoot, ".claude-plugin", "plugin.json"),
+				JSON.stringify({ name: "ck", version }),
+				"utf-8",
+			);
+			await writeFile(
+				join(pluginSourceDir, ".claude", ".claude-plugin", "plugin.json"),
+				JSON.stringify({ name: "ck", version: "2.20.1-beta.7" }),
+				"utf-8",
+			);
+			if (metadataState === "malformed") {
+				await writeFile(metadataPath, "{", "utf-8");
+			} else if (metadataState === "empty") {
+				await writeFile(metadataPath, "{}", "utf-8");
+			}
+			const metadataBefore = existsSync(metadataPath) ? readFileSync(metadataPath) : null;
+			await writeSettings({ "ck@claudekit": true });
+			await writeMarketplace(pluginSourceDir);
+			const { installer } = fakeInstaller();
+
+			const result = await migrateLegacyToPlugin({
+				pluginSourceDir,
+				claudeDir,
+				installer,
+				now: TS,
+			});
+
+			expect(result.action).toBe("migrated-from-legacy");
+			expect(result.modeBefore).toBe("mixed");
+			expect(result.removedPaths).toEqual([relativePath]);
+			expect(existsSync(join(claudeDir, relativePath))).toBe(false);
+			expect(readFileSync(join(result.backupDir as string, relativePath), "utf-8")).toBe(
+				"retired\n",
+			);
+			expect(existsSync(metadataPath) ? readFileSync(metadataPath) : null).toEqual(metadataBefore);
+			expect(detectInstallMode(claudeDir).mode).toBe("plugin");
+		},
+	);
+
 	test("mismatched deprecated installedFiles content stays mixed and actionable", async () => {
 		const legacyFile = join(claudeDir, "skills", "cook", "SKILL.md");
 		const pluginSourceDir = join(claudeDir, "staged-source");
