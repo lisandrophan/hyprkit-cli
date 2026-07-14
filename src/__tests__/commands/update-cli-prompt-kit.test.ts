@@ -89,6 +89,19 @@ describe("promptKitUpdate version display", () => {
 			hasTrackedPluginSuppliedLegacyFilesFn: () =>
 				opts?.hasTrackedPluginSuppliedLegacyFiles ?? false,
 			shouldRefreshCodexPluginFn: async () => false,
+			detectCodexPluginStateFn: async () => ({
+				status: "missing",
+				pluginId: "ck@claudekit",
+				enabled: false,
+				installed: false,
+				installedVersion: null,
+				expectedVersion: null,
+				marketplace: null,
+				expectedMarketplace: "claudekit",
+				source: null,
+				expectedSource: null,
+				shouldRefresh: true,
+			}),
 		};
 		return { deps, stopCalls, spawnArgs, wasSpawnCalled: () => spawnCalled };
 	}

@@ -33,7 +33,11 @@ import {
 	detectInstallMode,
 	hasTrackedPluginSuppliedLegacyFiles,
 } from "@/domains/installation/plugin/install-mode-detector.js";
-import { resolveInstallModePreferenceForUpdate } from "@/domains/installation/plugin/install-mode-preference.js";
+import {
+	readInstallModePreferenceFromClaudeDir,
+	resolveEffectiveInstallModePreference,
+	resolveInstallModePreferenceForUpdate,
+} from "@/domains/installation/plugin/install-mode-preference.js";
 import { getInstalledKits } from "@/domains/migration/metadata-migration.js";
 import { versionsMatch } from "@/domains/versioning/checking/version-utils.js";
 import { getClaudeKitSetup } from "@/services/file-operations/claudekit-scanner.js";
@@ -526,9 +530,30 @@ export async function promptKitUpdate(
 		const globalMetadata = hasGlobal ? await readMetadataFile(setup.global.path) : null;
 
 		const localKits = localMetadata ? getInstalledKits(localMetadata) : [];
-		const globalKits = globalMetadata ? getInstalledKits(globalMetadata) : [];
+		let globalKits = globalMetadata ? getInstalledKits(globalMetadata) : [];
+		let recoveredGlobalInstallMode: InstallModeReport | null = null;
+		if (setup.global.path && globalKits.length === 0) {
+			try {
+				const candidate = detectInstallModeFn(setup.global.path);
+				if (candidate.legacy.installed) {
+					recoveredGlobalInstallMode = candidate;
+					globalKits = ["engineer"];
+				}
+			} catch (error) {
+				logger.verbose(
+					`Global Engineer recovery check skipped: ${
+						error instanceof Error ? error.message : "unknown"
+					}`,
+				);
+			}
+		}
 
-		let selection = selectKitForUpdate({ hasLocal, hasGlobal, localKits, globalKits });
+		let selection = selectKitForUpdate({
+			hasLocal,
+			hasGlobal: hasGlobal || recoveredGlobalInstallMode !== null,
+			localKits,
+			globalKits,
+		});
 
 		if (!selection) {
 			logger.verbose("No ClaudeKit installations detected, skipping kit update prompt");
@@ -589,6 +614,11 @@ export async function promptKitUpdate(
 		let installModePreference: InstallModePreference | undefined = selection.isGlobal
 			? resolveInstallModePreferenceForUpdate(globalMetadata, selection.kit)
 			: undefined;
+		if (selection.isGlobal && selection.kit === "engineer" && !globalMetadata) {
+			installModePreference = resolveEffectiveInstallModePreference(
+				readInstallModePreferenceFromClaudeDir(setup.global.path, "engineer"),
+			);
+		}
 		const selectedClaudeDir = selection.isGlobal ? setup.global.path : setup.project.path;
 		if (selectedClaudeDir) {
 			try {
@@ -633,7 +663,7 @@ export async function promptKitUpdate(
 
 			try {
 				if (selection.isGlobal && selection.kit === "engineer") {
-					const installMode = detectInstallModeFn(selectedClaudeDir);
+					const installMode = recoveredGlobalInstallMode ?? detectInstallModeFn(selectedClaudeDir);
 					if (installModePreference === "legacy") {
 						const codexPluginState = await detectCodexPluginStateFn();
 						if (

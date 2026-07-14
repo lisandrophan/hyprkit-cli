@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
 	classifyInstallMode,
 	detectInstallMode,
@@ -41,6 +41,50 @@ describe("install-mode-detector", () => {
 		await mkdir(join(claudeDir, "plugins", "cache", marketplace, "ck", version), {
 			recursive: true,
 		});
+	}
+
+	async function writePluginCacheFile(
+		version: string,
+		relativePath: string,
+		content: string,
+	): Promise<void> {
+		const versionRoot = join(claudeDir, "plugins", "cache", "claudekit", "ck", version);
+		await writePluginCacheManifest(version);
+		const cacheFile = join(versionRoot, relativePath);
+		await mkdir(dirname(cacheFile), { recursive: true });
+		await writeFile(cacheFile, content, "utf-8");
+	}
+
+	async function writePluginCacheManifest(
+		version: string,
+		manifest: unknown = { name: "ck", version },
+	): Promise<void> {
+		const manifestPath = join(
+			claudeDir,
+			"plugins",
+			"cache",
+			"claudekit",
+			"ck",
+			version,
+			".claude-plugin",
+			"plugin.json",
+		);
+		await mkdir(dirname(manifestPath), { recursive: true });
+		await writeFile(
+			manifestPath,
+			typeof manifest === "string" ? manifest : JSON.stringify(manifest),
+			"utf-8",
+		);
+	}
+
+	async function writePluginCachePayloadWithoutManifest(
+		version: string,
+		relativePath: string,
+		content: string,
+	): Promise<void> {
+		const cacheFile = join(claudeDir, "plugins", "cache", "claudekit", "ck", version, relativePath);
+		await mkdir(dirname(cacheFile), { recursive: true });
+		await writeFile(cacheFile, content, "utf-8");
 	}
 
 	test("fresh: no settings, no metadata, no cache", () => {
@@ -261,6 +305,175 @@ describe("install-mode-detector", () => {
 		expect(report.mode).toBe("mixed");
 		expect(report.plugin.installed).toBe(true);
 		expect(report.legacy.installed).toBe(true);
+	});
+
+	test("mixed: metadata-free legacy files match a historical CK plugin cache payload", async () => {
+		await writeSettings({ "ck@claudekit": true });
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.20.1-beta.7",
+					installedAt: "x",
+					installModePreference: "plugin",
+				},
+			},
+		});
+		await writePluginCacheFile("2.20.1-beta.5", "skills/gemini-research/SKILL.md", "retired\n");
+		await writePluginCacheFile("2.20.1-beta.7", "skills/cook/SKILL.md", "current\n");
+		await mkdir(join(claudeDir, "skills", "gemini-research"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "gemini-research", "SKILL.md"), "retired\n", "utf-8");
+
+		const report = detectInstallMode(claudeDir);
+
+		expect(report.mode).toBe("mixed");
+		expect(report.legacy).toEqual({ installed: true, version: "2.20.1-beta.7" });
+		expect(hasTrackedPluginSuppliedLegacyFiles(claudeDir)).toBe(true);
+	});
+
+	test.each([
+		["absent", null],
+		["malformed", "{"],
+		["empty", {}],
+		["unrecognized", { unrelated: true }],
+	] as const)(
+		"mixed: %s metadata retains official cache ownership proof",
+		async (_label, metadata) => {
+			await writeSettings({ "ck@claudekit": true });
+			if (metadata === "{") {
+				await writeFile(join(claudeDir, "metadata.json"), metadata, "utf-8");
+			} else if (metadata !== null) {
+				await writeMetadata(metadata);
+			}
+			await writePluginCacheFile("2.20.1-beta.5", "skills/retired/SKILL.md", "retired\n");
+			await mkdir(join(claudeDir, "skills", "retired"), { recursive: true });
+			await writeFile(join(claudeDir, "skills", "retired", "SKILL.md"), "retired\n", "utf-8");
+
+			expect(detectInstallMode(claudeDir).mode).toBe("mixed");
+			expect(detectLegacyState(claudeDir)).toEqual({ installed: true, version: null });
+		},
+	);
+
+	test.each([
+		["missing", null],
+		["forged name", { name: "other", version: "2.20.1-beta.5" }],
+		["version mismatch", { name: "ck", version: "2.20.1-beta.4" }],
+		["malformed", "{"],
+	] as const)(
+		"plugin: %s cache manifest cannot prove orphan ownership",
+		async (_label, manifest) => {
+			const version = "2.20.1-beta.5";
+			await writeSettings({ "ck@claudekit": true });
+			await writeMetadata({
+				kits: {
+					engineer: {
+						version: "2.20.1-beta.7",
+						installedAt: "x",
+						installModePreference: "plugin",
+					},
+				},
+			});
+			await writePluginCachePayloadWithoutManifest(version, "skills/retired/SKILL.md", "retired\n");
+			if (manifest !== null) await writePluginCacheManifest(version, manifest);
+			await mkdir(join(claudeDir, "skills", "retired"), { recursive: true });
+			await writeFile(join(claudeDir, "skills", "retired", "SKILL.md"), "retired\n", "utf-8");
+
+			expect(detectInstallMode(claudeDir).mode).toBe("plugin");
+			expect(hasTrackedPluginSuppliedLegacyFiles(claudeDir)).toBe(false);
+		},
+	);
+
+	test("mixed: cache manifest and directory versions may differ only by leading v", async () => {
+		await writeSettings({ "ck@claudekit": true });
+		await writePluginCachePayloadWithoutManifest(
+			"v2.20.1-beta.5",
+			"skills/retired/SKILL.md",
+			"retired\n",
+		);
+		await writePluginCacheManifest("v2.20.1-beta.5", {
+			name: "ck",
+			version: "2.20.1-beta.5",
+		});
+		await mkdir(join(claudeDir, "skills", "retired"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "retired", "SKILL.md"), "retired\n", "utf-8");
+
+		expect(detectInstallMode(claudeDir).mode).toBe("mixed");
+	});
+
+	test.skipIf(process.platform === "win32")(
+		"plugin: symlinked CK manifest cannot prove orphan ownership",
+		async () => {
+			const version = "2.20.1-beta.5";
+			const outsideManifest = join(claudeDir, "outside-plugin.json");
+			const manifestPath = join(
+				claudeDir,
+				"plugins",
+				"cache",
+				"claudekit",
+				"ck",
+				version,
+				".claude-plugin",
+				"plugin.json",
+			);
+			await writeSettings({ "ck@claudekit": true });
+			await writePluginCachePayloadWithoutManifest(version, "skills/retired/SKILL.md", "retired\n");
+			await mkdir(dirname(manifestPath), { recursive: true });
+			await writeFile(outsideManifest, JSON.stringify({ name: "ck", version }), "utf-8");
+			await symlink(outsideManifest, manifestPath, "file");
+			await mkdir(join(claudeDir, "skills", "retired"), { recursive: true });
+			await writeFile(join(claudeDir, "skills", "retired", "SKILL.md"), "retired\n", "utf-8");
+
+			expect(detectInstallMode(claudeDir).mode).toBe("plugin");
+			expect(hasTrackedPluginSuppliedLegacyFiles(claudeDir)).toBe(false);
+		},
+	);
+
+	test("plugin: modified, custom, and symlinked legacy files are not cache-owned", async () => {
+		const outsideDir = join(
+			tmpdir(),
+			`ck-mode-outside-${Date.now()}-${Math.round(performance.now())}`,
+		);
+		await writeSettings({ "ck@claudekit": true });
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.20.1-beta.7",
+					installedAt: "x",
+					installModePreference: "plugin",
+				},
+			},
+		});
+		await writePluginCacheFile("2.20.1-beta.5", "skills/cook/SKILL.md", "original\n");
+		await writePluginCacheFile("2.20.1-beta.5", "skills/linked/SKILL.md", "outside\n");
+		await mkdir(join(claudeDir, "skills", "cook"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "cook", "SKILL.md"), "edited\n", "utf-8");
+		await mkdir(join(claudeDir, "skills", "custom"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "custom", "SKILL.md"), "custom\n", "utf-8");
+		await mkdir(outsideDir, { recursive: true });
+		await writeFile(join(outsideDir, "SKILL.md"), "outside\n", "utf-8");
+		await symlink(outsideDir, join(claudeDir, "skills", "linked"), "dir");
+		await mkdir(join(claudeDir, "skills", "cache-linked"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "cache-linked", "SKILL.md"), "outside\n", "utf-8");
+		await symlink(
+			outsideDir,
+			join(
+				claudeDir,
+				"plugins",
+				"cache",
+				"claudekit",
+				"ck",
+				"2.20.1-beta.5",
+				"skills",
+				"cache-linked",
+			),
+			"dir",
+		);
+
+		try {
+			expect(detectInstallMode(claudeDir).mode).toBe("plugin");
+			expect(hasTrackedPluginSuppliedLegacyFiles(claudeDir)).toBe(false);
+		} finally {
+			await rm(outsideDir, { recursive: true, force: true });
+		}
 	});
 
 	test("plugin migration receipt metadata without legacy payload does not stay mixed forever", async () => {

@@ -4,6 +4,7 @@ import { join, relative, resolve } from "node:path";
 import { PathResolver } from "@/shared/path-resolver.js";
 import { compareVersions } from "compare-versions";
 import { collectEngineerHistoricalFiles } from "./historical-metadata-files.js";
+import { collectOrphanedPluginLegacyFileProofs } from "./orphaned-plugin-legacy-files.js";
 
 /**
  * Install-mode detection for the ClaudeKit Engineer kit.
@@ -39,9 +40,9 @@ export interface PluginState {
 }
 
 export interface LegacyState {
-	/** A legacy copy of the engineer kit is tracked in metadata.json. */
+	/** A CK-owned legacy Engineer payload is still present. */
 	installed: boolean;
-	/** Version recorded for the legacy copy, or null. */
+	/** Version recorded in metadata.json, or null when cache proof is the only signal. */
 	version: string | null;
 }
 
@@ -138,14 +139,13 @@ function normalizeVersion(version: string): string {
 /**
  * Detect a legacy (copied-into-~/.claude) install of the engineer kit.
  *
- * Authoritative signal is metadata.json: the CLI records the kit under
- * `kits.engineer` (multi-kit format) or at the root (legacy single-kit format)
- * when it copies the payload into ~/.claude.
+ * Metadata tracks normal copied installs. For files orphaned by pruned metadata,
+ * exact same-path bytes in an official CK plugin cache are accepted as proof.
  */
 export function detectLegacyState(claudeDir: string): LegacyState {
 	const metadata = readJsonSafe(join(claudeDir, "metadata.json"));
-	if (!isRecord(metadata)) return { installed: false, version: null };
-	const hasLegacyPayload = hasTrackedPluginSuppliedLegacyFiles(claudeDir);
+	const hasLegacyPayload = hasPluginSuppliedLegacyFiles(claudeDir, metadata);
+	if (!isRecord(metadata)) return { installed: hasLegacyPayload, version: null };
 
 	// Multi-kit format: kits.engineer
 	if (isRecord(metadata.kits) && isRecord(metadata.kits[ENGINEER_KIT_KEY])) {
@@ -166,7 +166,7 @@ export function detectLegacyState(claudeDir: string): LegacyState {
 		return { installed: true, version: metadata.version };
 	}
 
-	return { installed: false, version: null };
+	return { installed: hasLegacyPayload, version: null };
 }
 
 export function classifyInstallMode(plugin: PluginState, legacy: LegacyState): InstallMode {
@@ -232,23 +232,33 @@ const PLUGIN_SUPPLIED_LEGACY_PREFIXES = ["agents/", "skills/"];
 
 /**
  * True when the legacy flat-copy install still has CK-owned files that are now
- * supplied by the plugin. This avoids forcing plugin migration forever for
- * mixed installs that intentionally retain runtime hook/rule surfaces.
+ * supplied by the plugin. Metadata remains authoritative for tracked files;
+ * otherwise exact same-path bytes in an official CK plugin cache prove an
+ * orphaned legacy file. This avoids trusting arbitrary/custom files.
  */
 export function hasTrackedPluginSuppliedLegacyFiles(
 	claudeDir: string = PathResolver.getGlobalKitDir(),
 ): boolean {
 	const metadata = readJsonSafe(join(claudeDir, "metadata.json"));
-	if (!isRecord(metadata)) return false;
+	return hasPluginSuppliedLegacyFiles(claudeDir, metadata);
+}
 
-	for (const file of collectEngineerHistoricalFiles(metadata)) {
+function hasPluginSuppliedLegacyFiles(claudeDir: string, metadata: unknown): boolean {
+	const historicalFiles = collectEngineerHistoricalFiles(metadata);
+
+	for (const file of historicalFiles) {
 		const resolvedPath = resolveSafePluginSuppliedLegacyPath(claudeDir, file.path);
 		if (!resolvedPath || !existsSync(resolvedPath)) continue;
 		if (file.ownership === "user" && !checksumMatches(resolvedPath, file.checksum)) continue;
 		return true;
 	}
 
-	return false;
+	return (
+		collectOrphanedPluginLegacyFileProofs(
+			claudeDir,
+			historicalFiles.map((file) => file.path),
+		).length > 0
+	);
 }
 
 function resolveSafePluginSuppliedLegacyPath(claudeDir: string, pathValue: string): string | null {

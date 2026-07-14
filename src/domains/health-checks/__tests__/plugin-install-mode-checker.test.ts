@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { PluginInstallModeChecker } from "@/domains/health-checks/plugin-install-mode-checker.js";
 import type { CodexPluginState } from "@/domains/installation/plugin/codex-plugin-installer.js";
 
@@ -35,6 +35,15 @@ describe("PluginInstallModeChecker", () => {
 		writeFile(join(claudeDir, "settings.json"), JSON.stringify({ enabledPlugins }), "utf-8");
 	const writeMetadata = (obj: unknown) =>
 		writeFile(join(claudeDir, "metadata.json"), JSON.stringify(obj), "utf-8");
+	const writePluginCacheFile = async (version: string, relativePath: string, content: string) => {
+		const versionRoot = join(claudeDir, "plugins", "cache", "claudekit", "ck", version);
+		const manifestPath = join(versionRoot, ".claude-plugin", "plugin.json");
+		const cacheFile = join(versionRoot, relativePath);
+		await mkdir(dirname(manifestPath), { recursive: true });
+		await writeFile(manifestPath, JSON.stringify({ name: "ck", version }), "utf-8");
+		await mkdir(dirname(cacheFile), { recursive: true });
+		await writeFile(cacheFile, content, "utf-8");
+	};
 
 	async function single(codexState: CodexPluginState = codexUnavailable) {
 		const results = await new PluginInstallModeChecker(claudeDir, {
@@ -99,6 +108,50 @@ describe("PluginInstallModeChecker", () => {
 		expect(r.status).toBe("pass");
 		expect(r.message.toLowerCase()).toContain("plugin");
 		expect(r.message).toContain("enabled");
+	});
+
+	test("warns when plugin mode has metadata-free legacy files proven by historical cache", async () => {
+		await writeMetadata({
+			kits: {
+				engineer: {
+					version: "2.20.1-beta.7",
+					installedAt: "x",
+					installModePreference: "plugin",
+				},
+			},
+		});
+		await writeSettings({ "ck@claudekit": true });
+		await writePluginCacheFile("2.20.1-beta.5", "skills/gemini-research/SKILL.md", "retired\n");
+		await mkdir(join(claudeDir, "skills", "gemini-research"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "gemini-research", "SKILL.md"), "retired\n", "utf-8");
+
+		const r = await single();
+
+		expect(r.status).toBe("warn");
+		expect(r.message).toContain("Install mode: mixed");
+		expect(r.message).toContain("--install-mode plugin");
+	});
+
+	test.each([
+		["absent", null],
+		["malformed", "{"],
+		["empty", {}],
+	] as const)("warns on cache-proven mixed state with %s metadata", async (_label, metadata) => {
+		if (metadata === "{") {
+			await writeFile(join(claudeDir, "metadata.json"), metadata, "utf-8");
+		} else if (metadata !== null) {
+			await writeMetadata(metadata);
+		}
+		await writeSettings({ "ck@claudekit": true });
+		await writePluginCacheFile("2.20.1-beta.5", "skills/retired/SKILL.md", "retired\n");
+		await mkdir(join(claudeDir, "skills", "retired"), { recursive: true });
+		await writeFile(join(claudeDir, "skills", "retired", "SKILL.md"), "retired\n", "utf-8");
+
+		const r = await single();
+
+		expect(r.status).toBe("warn");
+		expect(r.message).toContain("Install mode: mixed");
+		expect(r.message).toContain("--install-mode legacy");
 	});
 
 	test("persisted plugin consent with disabled plugin -> warn with enable hint", async () => {

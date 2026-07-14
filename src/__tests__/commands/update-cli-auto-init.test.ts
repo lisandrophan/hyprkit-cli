@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { PromptKitUpdateDeps } from "@/commands/update-cli.js";
 import { promptKitUpdate } from "@/commands/update-cli.js";
 import { countMissingCkHookRegistrations } from "@/commands/update/post-update-handler.js";
-import type { InstallModeReport } from "@/domains/installation/plugin/install-mode-detector.js";
+import {
+	type InstallModeReport,
+	detectInstallMode,
+	hasTrackedPluginSuppliedLegacyFiles,
+} from "@/domains/installation/plugin/install-mode-detector.js";
 
 const confirmMock = mock(async (_options: { message: string }) => true);
 const isCancelMock = mock((value: unknown) => value === "cancelled");
@@ -40,6 +44,21 @@ async function writeMetadata(
 			},
 		}),
 	);
+}
+
+async function writeOfficialPluginCacheFile(
+	dir: string,
+	version: string,
+	relativePath: string,
+	content: string,
+) {
+	const versionRoot = join(dir, "plugins", "cache", "claudekit", "ck", version);
+	const manifestPath = join(versionRoot, ".claude-plugin", "plugin.json");
+	const cacheFile = join(versionRoot, relativePath);
+	await mkdir(dirname(manifestPath), { recursive: true });
+	await mkdir(dirname(cacheFile), { recursive: true });
+	await writeFile(manifestPath, JSON.stringify({ name: "ck", version }));
+	await writeFile(cacheFile, content);
 }
 
 function makeInstallModeReport(
@@ -575,6 +594,95 @@ describe("promptKitUpdate auto-init behavior", () => {
 		expect(execCount()).toBe(0);
 		expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
 	});
+
+	test("routes metadata-free historical cache matches through plugin repair", async () => {
+		await writeMetadata(tempDir, "1.0.0", "plugin");
+		await writeGlobalHookState(tempDir, { includeSessionState: true });
+		await writeFile(
+			join(tempDir, "settings.json"),
+			JSON.stringify({
+				enabledPlugins: { "ck@claudekit": true },
+				hooks: {
+					UserPromptSubmit: [
+						{
+							hooks: ["simplify-gate", "session-state"].map((name) => ({
+								type: "command",
+								command: `node "$HOME/.claude/hooks/${name}.cjs"`,
+							})),
+						},
+					],
+				},
+			}),
+		);
+		await mkdir(join(tempDir, "skills", "retired"), { recursive: true });
+		await writeOfficialPluginCacheFile(tempDir, "0.9.0", "skills/retired/SKILL.md", "retired\n");
+		await writeFile(join(tempDir, "skills", "retired", "SKILL.md"), "retired\n");
+
+		const { deps, execCount, spawnCount, capturedSpawnArgs } = makeDeps();
+		deps.getLatestReleaseTagFn = async () => "v1.0.0";
+		deps.detectInstallModeFn = detectInstallMode;
+		deps.hasTrackedPluginSuppliedLegacyFilesFn = hasTrackedPluginSuppliedLegacyFiles;
+
+		await promptKitUpdate(false, true, deps);
+
+		expect(spawnCount()).toBe(1);
+		expect(execCount()).toBe(0);
+		expect(capturedSpawnArgs()).toContain("--install-mode");
+		expect(capturedSpawnArgs()).toContain("plugin");
+		expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
+	});
+
+	test.each([
+		["absent", null, "legacy"],
+		["malformed", null, "legacy"],
+		["empty", {}, "legacy"],
+		[
+			"partial plugin-consent",
+			{ kits: { engineer: { installModePreference: "plugin" } } },
+			"plugin",
+		],
+	] as const)(
+		"recovers cache-proven global Engineer update with %s metadata",
+		async (metadataState, setupMetadata, expectedMode) => {
+			const metadataPath = join(tempDir, "metadata.json");
+			if (metadataState === "absent") {
+				await rm(metadataPath, { force: true });
+			} else if (metadataState === "malformed") {
+				await writeFile(metadataPath, "{");
+			} else {
+				await writeFile(metadataPath, JSON.stringify(setupMetadata));
+			}
+			await mkdir(join(tempDir, "skills", "retired"), { recursive: true });
+			await writeOfficialPluginCacheFile(tempDir, "0.9.0", "skills/retired/SKILL.md", "retired\n");
+			await writeFile(join(tempDir, "skills", "retired", "SKILL.md"), "retired\n");
+
+			const { deps, execCount, spawnCount, capturedSpawnArgs } = makeDeps();
+			deps.getSetupFn = async () => ({
+				global: {
+					path: tempDir,
+					metadata: setupMetadata as never,
+					components: { commands: 0, hooks: 0, skills: 1, workflows: 0, settings: 0 },
+				},
+				project: {
+					path: "",
+					metadata: null,
+					components: { commands: 0, hooks: 0, skills: 0, workflows: 0, settings: 0 },
+				},
+			});
+			deps.detectInstallModeFn = detectInstallMode;
+			deps.hasTrackedPluginSuppliedLegacyFilesFn = hasTrackedPluginSuppliedLegacyFiles;
+
+			await promptKitUpdate(false, true, deps);
+
+			expect(spawnCount()).toBe(1);
+			expect(execCount()).toBe(0);
+			expect(capturedSpawnArgs()).toContain("--kit");
+			expect(capturedSpawnArgs()).toContain("engineer");
+			expect(capturedSpawnArgs()).toContain("--install-mode");
+			expect(capturedSpawnArgs()).toContain(expectedMode);
+			expect(capturedSpawnArgs()).toContain("--restore-ck-hooks");
+		},
+	);
 
 	test("normal preference cleans an active mixed install after tracked legacy files are gone", async () => {
 		const { deps, execCount, spawnCount, capturedSpawnArgs } = makeDeps();
