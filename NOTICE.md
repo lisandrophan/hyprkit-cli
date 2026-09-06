@@ -16,7 +16,7 @@ private kit cannot be installed without changing the source.
 | Area | Change |
 |------|--------|
 | `package.json` | Published as `hyprkit-cli`; binary is `hk`, not `ck`; version restarted at 0.1.0 |
-| `src/types/kit.ts` | Adds a `hyprkit` kit (`pcldev/hyprkit`) to `KitType`, `isValidKitType` and `AVAILABLE_KITS`. `engineer` and `marketing` are untouched and still work. |
+| `src/types/kit.ts` | Adds a `hyprkit` kit (`lisandrophan/hyprkit`) to `KitType`, `isValidKitType` and `AVAILABLE_KITS`. `engineer` and `marketing` are untouched and still work. |
 | `src/types/kit.ts` | `ClaudeKitPackageMetadataSchema` accepts a `hyprkit` layout key alongside `claudekit` |
 | `src/shared/kit-layout.ts` | Reads the `hyprkit` layout key, falling back to `claudekit` |
 | `src/shared/path-resolver.ts` and 20 other files | CLI state directory `~/.claudekit` → `~/.hyprkit`, so this fork and an installed `claudekit-cli` do not share `projects.json`, `locks/` or caches |

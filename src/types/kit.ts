@@ -55,7 +55,7 @@ export const AVAILABLE_KITS: Record<KitType, KitConfig> = {
 	hyprkit: {
 		name: "HyprKit",
 		repo: "hyprkit",
-		owner: "pcldev",
+		owner: "lisandrophan",
 		description: "Personal Claude Code kit: agents, skills, hooks and rules",
 	},
 	engineer: {
