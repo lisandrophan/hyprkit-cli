@@ -1,5 +1,9 @@
 import { stat } from "node:fs/promises";
-import type { ReleaseManifest, ReleaseManifestFile } from "@/domains/migration/release-manifest.js";
+import {
+	type ReleaseManifest,
+	type ReleaseManifestFile,
+	toManifestKey,
+} from "@/domains/migration/release-manifest.js";
 import { findFileInInstalledKits } from "@/services/file-operations/manifest/manifest-reader.js";
 import { OwnershipChecker } from "@/services/file-operations/ownership-checker.js";
 import { logger } from "@/shared/logger.js";
@@ -105,7 +109,7 @@ export class SelectiveMerger {
 		}
 
 		// Get source info from manifest
-		const manifestEntry = this.manifestMap.get(relativePath);
+		const manifestEntry = this.manifestMap.get(toManifestKey(relativePath));
 		if (!manifestEntry) {
 			// No manifest entry → can't compare, must copy
 			logger.debug(`No manifest entry for ${relativePath}, will copy`);

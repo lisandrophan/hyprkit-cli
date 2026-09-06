@@ -20,6 +20,22 @@ export type ReleaseManifest = z.infer<typeof ReleaseManifestSchema>;
 export type ReleaseManifestFile = z.infer<typeof ReleaseManifestFileSchema>;
 
 /**
+ * Normalise a path to the form release manifests are keyed by.
+ *
+ * Manifests record kit files relative to the installed `.claude/` directory —
+ * `.claude/agents/planner.md` is stored as `agents/planner.md`. Callers work with
+ * install-relative paths that still carry the prefix, so every lookup has to be
+ * normalised or it silently misses: ownership then resolves to "user" for every
+ * file and the merger re-copies files it should have left alone.
+ */
+export function toManifestKey(path: string): string {
+	const forwardSlashed = path.replace(/\\/g, "/");
+	return forwardSlashed.startsWith(".claude/")
+		? forwardSlashed.slice(".claude/".length)
+		: forwardSlashed;
+}
+
+/**
  * ReleaseManifestLoader - Load and query release manifest from kit assets
  */
 export class ReleaseManifestLoader {
@@ -48,6 +64,7 @@ export class ReleaseManifestLoader {
 		manifest: ReleaseManifest,
 		relativePath: string,
 	): ReleaseManifestFile | undefined {
-		return manifest.files.find((f) => f.path === relativePath);
+		const key = toManifestKey(relativePath);
+		return manifest.files.find((f) => f.path === key);
 	}
 }

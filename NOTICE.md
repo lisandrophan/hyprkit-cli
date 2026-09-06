@@ -40,3 +40,24 @@ handles both through `src/shared/kit-config-files.ts`:
   with its settings split across two.
 - Watchers, never-copy lists, legacy-repair markers and portable-config discovery
   consider both names.
+
+## Behaviour this fork changes
+
+**Manifest lookups are normalised.** Release manifests key kit files without the
+`.claude/` prefix, but `buildFileTrackingList` and `SelectiveMerger.shouldCopyFile`
+passed the prefixed path. Every lookup missed, so ownership resolved to `user` for
+the entire install and the merger re-copied files it should have compared. A real
+claudekit install shows the same symptom: 1512 of 1512 files recorded as `user`.
+`toManifestKey()` now normalises at both call sites.
+
+**Locally modified kit files are held back on update.** Upstream records a
+per-file checksum and an `ownership` field but only consults them at uninstall, so
+an update silently replaced a kit file the user had edited, with no backup. This
+fork compares the file against the checksum recorded by the previous install; a
+mismatch means the user edited it, so the copy is skipped, the file is listed on
+stdout, and it is recorded as `ck-modified` against the **shipped** checksum —
+keeping that as the reference, or the edited content would become the new baseline
+and the next update would overwrite it. `--force-overwrite` takes the incoming
+version. `settings.json` is exempt (it has its own selective merge) and so is
+`metadata.json` (CLI-managed state, rewritten every run).
+

@@ -120,6 +120,20 @@ export class FileMerger {
 	 * @param claudeDir - Path to .claude directory
 	 * @param installingKit - Kit being installed
 	 */
+	setTrackedChecksums(checksums: Map<string, string>, forceOverwrite = false): void {
+		this.copyExecutor.setTrackedChecksums(checksums, forceOverwrite);
+	}
+
+	/** Kit files skipped because the user had edited them. */
+	getLocallyModifiedFiles(): string[] {
+		return this.copyExecutor.getLocallyModifiedFiles();
+	}
+
+	/** Held-back files mapped to the checksum the kit shipped. */
+	getLocallyModifiedChecksums(): Map<string, string> {
+		return this.copyExecutor.getLocallyModifiedChecksums();
+	}
+
 	setMultiKitContext(claudeDir: string, installingKit: KitType): void {
 		this.copyExecutor.setMultiKitContext(claudeDir, installingKit);
 	}

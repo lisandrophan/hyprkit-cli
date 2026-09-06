@@ -52,6 +52,14 @@ export interface FileTrackInfo {
 	installedVersion: string;
 	/** Git commit timestamp from kit repo (ISO 8601) */
 	sourceTimestamp?: string;
+	/**
+	 * Checksum to record instead of hashing the file on disk.
+	 *
+	 * Used for files held back because the user edited them: the reference has to
+	 * stay the checksum the kit shipped, or the edited content silently becomes the
+	 * new baseline and the next update overwrites it.
+	 */
+	checksum?: string;
 }
 
 /**
@@ -153,7 +161,8 @@ export class ManifestTracker {
 		const tasks = files.map((file) =>
 			limit(async (): Promise<boolean> => {
 				try {
-					const checksum = await OwnershipChecker.calculateChecksum(file.filePath);
+					const checksum =
+						file.checksum ?? (await OwnershipChecker.calculateChecksum(file.filePath));
 					const normalized = file.relativePath.replace(/\\/g, "/");
 
 					this.trackedFiles.set(normalized, {
@@ -230,6 +239,11 @@ export interface BuildFileTrackingOptions {
 	installedVersion: string;
 	/** Whether this is a global installation (affects path handling) */
 	isGlobal?: boolean;
+	/**
+	 * Files held back because the user edited them, mapped to the checksum the kit
+	 * shipped. These are recorded as `ck-modified` against that checksum.
+	 */
+	locallyModified?: Map<string, string>;
 }
 
 /**
@@ -264,6 +278,7 @@ export function buildFileTrackingList(options: BuildFileTrackingOptions): FileTr
 		releaseManifest,
 		installedVersion,
 		isGlobal = false,
+		locallyModified,
 	} = options;
 	const filesToTrack: FileTrackInfo[] = [];
 
@@ -275,13 +290,26 @@ export function buildFileTrackingList(options: BuildFileTrackingOptions): FileTr
 		const relativePath = isGlobal ? installedPath : installedPath.replace(/^\.claude\//, "");
 		const filePath = join(claudeDir, relativePath);
 
-		// Determine ownership: if file exists in release manifest, it's CK-owned
+		// Determine ownership: if file exists in release manifest, it's CK-owned.
+		// Look up by relativePath, not installedPath — manifests are keyed without
+		// the `.claude/` prefix, so passing the prefixed path missed every entry and
+		// marked the whole install as user-owned.
 		const manifestEntry = releaseManifest
-			? ReleaseManifestLoader.findFile(releaseManifest, installedPath)
+			? ReleaseManifestLoader.findFile(releaseManifest, relativePath)
 			: null;
-		const ownership: FileOwnership = manifestEntry ? "ck" : "user";
+		// A file held back because the user edited it keeps the shipped checksum as
+		// its reference and is recorded as ck-modified, so the protection survives
+		// every subsequent update rather than lasting a single round.
+		const shippedChecksum =
+			locallyModified?.get(installedPath) ?? locallyModified?.get(relativePath);
+		const ownership: FileOwnership = shippedChecksum
+			? "ck-modified"
+			: manifestEntry
+				? "ck"
+				: "user";
 
 		filesToTrack.push({
+			checksum: shippedChecksum,
 			filePath,
 			relativePath,
 			ownership,

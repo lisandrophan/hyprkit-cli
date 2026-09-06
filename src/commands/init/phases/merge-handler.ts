@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { handleDeletions } from "@/domains/installation/deletion-handler.js";
 import { FileMerger } from "@/domains/installation/file-merger.js";
 import { LegacyMigration } from "@/domains/migration/legacy-migration.js";
+import { getAllTrackedFiles, getKitMetadata } from "@/domains/migration/metadata-migration.js";
 import { ReleaseManifestLoader } from "@/domains/migration/release-manifest.js";
 import { buildConflictSummary, displayConflictSummary } from "@/domains/ui/conflict-summary.js";
 import { FileScanner } from "@/services/file-operations/file-scanner.js";
@@ -17,6 +18,7 @@ import {
 import { CommandsPrefix } from "@/services/transformers/commands-prefix.js";
 import { logger } from "@/shared/logger.js";
 import { output } from "@/shared/output-manager.js";
+import type { KitType, Metadata } from "@/types";
 import type { ClaudeKitMetadata } from "@/types";
 import { pathExists, readFile } from "fs-extra";
 import type { InitContext } from "../types.js";
@@ -110,6 +112,14 @@ export async function handleMerge(ctx: InitContext): Promise<InitContext> {
 		merger.setMultiKitContext(ctx.claudeDir, ctx.kitType);
 	}
 
+	// Hand the previous install's per-file checksums to the merger so an update can
+	// tell a kit file the user edited from one it shipped, and hold the edited ones
+	// back instead of overwriting them with no backup.
+	merger.setTrackedChecksums(
+		await loadTrackedChecksums(ctx.claudeDir, ctx.kitType),
+		ctx.options.forceOverwrite === true,
+	);
+
 	// Load release manifest and handle legacy migration
 	const releaseManifest = await ReleaseManifestLoader.load(ctx.extractDir);
 
@@ -177,6 +187,21 @@ export async function handleMerge(ctx: InitContext): Promise<InitContext> {
 	// Merge files
 	await merger.merge(sourceDir, ctx.resolvedDir, ctx.isNonInteractive);
 
+	// Name the kit files we held back. Staying quiet about this would be as bad as
+	// the silent overwrite it replaces: the user needs to know an update was skipped
+	// and how to take it.
+	const locallyModified = merger.getLocallyModifiedFiles();
+	if (locallyModified.length > 0) {
+		logger.warning(
+			`Kept ${locallyModified.length} locally modified kit file(s) — the update for these was not applied:`,
+		);
+		for (const path of locallyModified.slice(0, 10)) logger.warning(`    ${path}`);
+		if (locallyModified.length > 10) {
+			logger.warning(`    ... and ${locallyModified.length - 10} more`);
+		}
+		logger.warning("    Re-run with --force-overwrite to take the incoming versions.");
+	}
+
 	// Display conflict resolution summary if any conflicts occurred
 	const fileConflicts = merger.getFileConflicts();
 	if (fileConflicts.length > 0 && !ctx.isNonInteractive) {
@@ -213,6 +238,7 @@ export async function handleMerge(ctx: InitContext): Promise<InitContext> {
 		releaseManifest,
 		installedVersion,
 		isGlobal: ctx.options.global,
+		locallyModified: merger.getLocallyModifiedChecksums(),
 	});
 
 	await trackFilesWithProgress(filesToTrack, {
@@ -229,4 +255,30 @@ export async function handleMerge(ctx: InitContext): Promise<InitContext> {
 		customClaudeFiles,
 		includePatterns,
 	};
+}
+
+/**
+ * Read the checksums recorded for a kit by its previous install.
+ *
+ * @returns relativePath -> checksum, empty when there is no prior install
+ */
+async function loadTrackedChecksums(
+	claudeDir: string,
+	kitType: KitType | undefined,
+): Promise<Map<string, string>> {
+	const checksums = new Map<string, string>();
+	try {
+		const raw = await readFile(join(claudeDir, "metadata.json"), "utf-8");
+		const metadata = JSON.parse(raw) as Metadata;
+		const tracked = kitType
+			? (getKitMetadata(metadata, kitType)?.files ?? getAllTrackedFiles(metadata))
+			: getAllTrackedFiles(metadata);
+		for (const file of tracked) {
+			if (file.ownership === "user") continue;
+			checksums.set(file.path, file.checksum);
+		}
+	} catch {
+		// No metadata, unreadable, or malformed: a first install has nothing to protect.
+	}
+	return checksums;
 }

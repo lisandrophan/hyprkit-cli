@@ -1,5 +1,7 @@
 import { dirname, join, relative } from "node:path";
 import type { ReleaseManifest } from "@/domains/migration/release-manifest.js";
+import { toManifestKey } from "@/domains/migration/release-manifest.js";
+import { OwnershipChecker } from "@/services/file-operations/ownership-checker.js";
 import { logger } from "@/shared/logger.js";
 import { type KitType, USER_CONFIG_PATTERNS } from "@/types";
 import { copy, pathExists } from "fs-extra";
@@ -54,6 +56,12 @@ export class CopyExecutor {
 	private sharedSkipped = 0; // Track shared files skipped (multi-kit)
 	// Track installed files for manifest
 	private installedFiles: Set<string> = new Set();
+	/** relativePath -> checksum recorded by the previous install, when known. */
+	private trackedChecksums: Map<string, string> = new Map();
+	/** Kit files the user edited locally, held back from this copy: path -> shipped checksum. */
+	private locallyModified: Map<string, string> = new Map();
+	/** Overwrite locally modified kit files anyway. */
+	private forceOverwrite = false;
 	private installedDirectories: Set<string> = new Set();
 	// Track file conflicts for summary display
 	private fileConflicts: FileConflictInfo[] = [];
@@ -144,6 +152,35 @@ export class CopyExecutor {
 	 */
 	setZombiePrunerHookDir(hookDir: string): void {
 		this.settingsProcessor.setZombiePrunerHookDir(hookDir);
+	}
+
+	/**
+	 * Supply the checksums recorded for this kit by the previous install, so an
+	 * update can tell a file the user edited from one it shipped.
+	 *
+	 * Upstream records `ownership` and a per-file checksum but only consults them
+	 * at uninstall, so an update silently replaces edited kit files with no backup.
+	 * With these, {@link mergeFiles} holds such files back and reports them.
+	 */
+	setTrackedChecksums(checksums: Map<string, string>, forceOverwrite = false): void {
+		this.trackedChecksums = checksums;
+		this.forceOverwrite = forceOverwrite;
+	}
+
+	/** Kit files skipped because the user had edited them. */
+	getLocallyModifiedFiles(): string[] {
+		return [...this.locallyModified.keys()].sort();
+	}
+
+	/**
+	 * Held-back files mapped to the checksum the kit shipped.
+	 *
+	 * Recording the on-disk checksum instead would make the protection last exactly
+	 * one update: the edited content would become the new reference and the next
+	 * update would see no difference.
+	 */
+	getLocallyModifiedChecksums(): Map<string, string> {
+		return new Map(this.locallyModified);
 	}
 
 	/**
@@ -251,6 +288,28 @@ export class CopyExecutor {
 				logger.debug(`Copying user config (first-time): ${normalizedRelativePath}`);
 			}
 
+			// Tier 2b: Preserve kit files the user edited after the last install.
+			// settings.json is exempt — it has its own selective merge below, which
+			// keeps user entries while still adding the kit's.
+			if (
+				!this.forceOverwrite &&
+				normalizedRelativePath !== "settings.json" &&
+				normalizedRelativePath !== ".claude/settings.json" &&
+				// CLI-managed install state, rewritten every run — never the user's edit.
+				toManifestKey(normalizedRelativePath) !== "metadata.json"
+			) {
+				const recorded = this.trackedChecksums.get(toManifestKey(normalizedRelativePath));
+				if (recorded && (await pathExists(destPath))) {
+					const current = await OwnershipChecker.calculateChecksum(destPath);
+					if (current !== recorded) {
+						logger.debug(`Locally modified, preserving: ${normalizedRelativePath}`);
+						this.locallyModified.set(normalizedRelativePath, recorded);
+						this.trackInstalledFile(normalizedRelativePath);
+						continue;
+					}
+				}
+			}
+
 			// Special handling for settings.json
 			if (
 				normalizedRelativePath === "settings.json" ||
@@ -306,6 +365,8 @@ export class CopyExecutor {
 		if (ignoredSkillSkipped > 0)
 			parts.push(`preserved ${ignoredSkillSkipped} ignored skill file(s)`);
 		if (skippedCount > 0) parts.push(`skipped ${skippedCount} protected`);
+		if (this.locallyModified.size > 0)
+			parts.push(`kept ${this.locallyModified.size} locally modified`);
 
 		if (parts.length > 0) {
 			logger.success(parts.join(", "));
