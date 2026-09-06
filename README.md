@@ -1,5 +1,13 @@
 # ClaudeKit Config UI
 
+> **This is a fork.** `hyprkit-cli` is [claudekit-cli](https://github.com/mrgoonie/claudekit-cli)
+> by Duy Nguyen (MIT), with a `hyprkit` kit added and two install-path bugs fixed.
+> The binary is `hk`, state lives in `~/.hyprkit`, and the upstream `engineer` and
+> `marketing` kits still work. Almost all of the code below is upstream's — see
+> [NOTICE.md](NOTICE.md) for the full diff and the fork point.
+>
+> Most of this README still describes ClaudeKit; it has not been rewritten.
+
 Command-line tool and web dashboard for managing ClaudeKit projects.
 
 **Version**: 1.17.0
