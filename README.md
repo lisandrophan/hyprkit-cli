@@ -9,19 +9,10 @@ cd /path/to/project
 hk init --kit hyprkit
 ```
 
-## This is a fork
-
-`hyprkit-cli` is [claudekit-cli](https://github.com/mrgoonie/claudekit-cli) by
-Duy Nguyen, MIT licensed. Almost all of this code is his.
-
-The fork exists for one reason: the kit registry is a compile-time enum with no
-runtime override, so a private kit cannot be installed without changing the source.
-It adds a `hyprkit` kit, renames the binary to `hk`, moves the CLI's state to
-`~/.hyprkit` so it does not collide with an installed `claudekit-cli`, and fixes
-four install-path bugs (below). Upstream's `engineer` and `marketing` kits still
-work through it.
-
-See [NOTICE.md](NOTICE.md) for the fork point and the full list of changes.
+Forked from [claudekit-cli](https://github.com/mrgoonie/claudekit-cli) (MIT), which
+hardcodes its kit registry. Adds a `hyprkit` kit, uses the binary `hk` and the state
+directory `~/.hyprkit`, and fixes five install-path bugs. Upstream's `engineer` and
+`marketing` kits still work. [What changed](NOTICE.md).
 
 ## Commands
 
@@ -65,7 +56,7 @@ On update:
 
 ## Bugs fixed relative to upstream
 
-All four were found by installing the kit and checking the result, not by reading
+All five were found by installing the kit and checking the result, not by reading
 the code. They affect any kit, not just this one.
 
 **Manifest lookups never matched.** Release manifests key kit files with the

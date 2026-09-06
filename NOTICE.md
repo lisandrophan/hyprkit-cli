@@ -1,17 +1,15 @@
-# NOTICE
+# What this fork changes
 
-`hyprkit-cli` is a fork of **claudekit-cli** by Duy Nguyen.
+`hyprkit-cli` forks **claudekit-cli** by Duy Nguyen.
 
 - Upstream: https://github.com/mrgoonie/claudekit-cli
 - Fork point: `07d8c24f084f1ce73907c508a71e77516abe0a9a` (upstream v4.5.2)
-- Licence: MIT, unchanged. The upstream `LICENSE` file is kept verbatim and the
-  original copyright notice stands.
+- Licence: MIT, unchanged — `LICENSE` carries the original copyright notice.
 
-The overwhelming majority of this code is upstream's work. This fork exists only
-because the kit registry is a compile-time enum with no runtime override, so a
-private kit cannot be installed without changing the source.
+This file exists to keep upstream merges cheap: it is the list of files the fork
+touches, so a merge conflict anywhere else means the fork has drifted.
 
-## What this fork changes
+## Files touched
 
 | Area | Change |
 |------|--------|
@@ -41,7 +39,7 @@ handles both through `src/shared/kit-config-files.ts`:
 - Watchers, never-copy lists, legacy-repair markers and portable-config discovery
   consider both names.
 
-## Behaviour this fork changes
+## Behaviour changes
 
 **Manifest lookups are normalised.** Release manifests key kit files without the
 `.claude/` prefix, but `buildFileTrackingList` and `SelectiveMerger.shouldCopyFile`
