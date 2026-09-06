@@ -119,5 +119,9 @@
 		"conventional-changelog-conventionalcommits": "^9.1.0",
 		"semantic-release": "^24.2.0",
 		"typescript": "^5.7.2"
+	},
+	"homepage": "https://github.com/lisandrophan/hyprkit-cli#readme",
+	"bugs": {
+		"url": "https://github.com/lisandrophan/hyprkit-cli/issues"
 	}
 }
