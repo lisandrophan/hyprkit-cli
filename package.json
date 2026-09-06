@@ -1,7 +1,7 @@
 {
 	"name": "hyprkit-cli",
 	"version": "0.1.1",
-	"description": "CLI tool for bootstrapping and updating HyprKit projects (fork of claudekit-cli)",
+	"description": "Install and update the hyprkit Claude Code kit — agents, skills, hooks and rules — per project or globally.",
 	"type": "module",
 	"repository": {
 		"type": "git",

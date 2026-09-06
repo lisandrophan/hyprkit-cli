@@ -72,3 +72,32 @@ automatic tarball copied the kit repository's own `scripts/`, `docs/`, `guide/`,
 `package.json` and `README.md` into the target project. A pre-built release asset
 is already trimmed by the kit's release job, so this path is left alone.
 
+## Bugs fixed
+
+All five were found by installing the kit and checking the result, not by reading
+the code. They affect any kit, not just this one.
+
+**Manifest lookups never matched.** Release manifests key kit files with the
+`.claude/` prefix stripped, but both lookups passed the prefixed path. Every lookup
+missed, so ownership resolved to `user` for the whole install and the merger
+re-copied files it should have compared. A real claudekit install records all 1512
+of its files as `user` for this reason.
+
+**Updates overwrote files the user had edited.** `OwnershipChecker` is never called
+on the install path — only at uninstall — so an edited kit file was replaced with no
+warning and no backup.
+
+**`Accept: application/octet-stream` on source archives.** Correct for the
+release-asset endpoint, rejected with 415 by `/tarball/` and `/zipball/`. Both are
+`api.github.com` URLs, so the header cannot be picked by host alone. Only shows on a
+release with no uploaded asset, where the CLI falls back to GitHub's automatic
+tarball — which is why upstream never hit it.
+
+**Unfiltered tarball extraction.** The allowlist that trims a release to `.claude/`,
+`plans/` and a few root files was applied to the git-clone path only. Installing from
+an automatic tarball copied the kit repository's own `scripts/`, `docs/`, `guide/`,
+`package.json` and `README.md` into the target project.
+
+**Legacy kit detection defaulted to `engineer`.** A kit ships `metadata.json` with
+its name at the top level, and the matcher only knew `engineer` and `marketing`, so
+installing any other kit invented a phantom `engineer` entry beside the real one.
