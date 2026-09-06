@@ -17,7 +17,7 @@ export class VersionCacheManager {
 	private static readonly CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 	/**
-	 * Get cache file path (always use local ~/.claudekit/cache, not global)
+	 * Get cache file path (always use local ~/.hyprkit/cache, not global)
 	 */
 	private static getCacheFile(): string {
 		const cacheDir = PathResolver.getCacheDir(false); // false = local

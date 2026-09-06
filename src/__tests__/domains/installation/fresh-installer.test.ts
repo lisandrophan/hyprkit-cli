@@ -113,7 +113,7 @@ async function runFreshInstall(claudeDir: string): Promise<{ success: boolean; e
 
 // testPaths sets process.env.CK_TEST_HOME so PathResolver roots all directories
 // (backups, locks, config) under an isolated tmpdir — prevents pollution of the
-// real ~/.claudekit and avoids interference with other test files.
+// real ~/.hyprkit and avoids interference with other test files.
 let testPaths: TestPaths;
 let claudeDir: string;
 

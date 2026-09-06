@@ -263,7 +263,7 @@ describe("PackageManagerDetector", () => {
 
 		test("returns null when cache expired", async () => {
 			// Create expired cache (31 days old)
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 
 			const expiredData = {
@@ -279,7 +279,7 @@ describe("PackageManagerDetector", () => {
 
 		test("returns cached PM when cache valid", async () => {
 			// Create valid cache (1 day old)
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 
 			const validData = {
@@ -294,7 +294,7 @@ describe("PackageManagerDetector", () => {
 		});
 
 		test("returns null when cache has invalid JSON", async () => {
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 			writeFileSync(join(cacheDir, "install-info.json"), "{ invalid json }");
 
@@ -303,7 +303,7 @@ describe("PackageManagerDetector", () => {
 		});
 
 		test("returns null when cache has invalid structure", async () => {
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 
 			// Missing packageManager field
@@ -315,7 +315,7 @@ describe("PackageManagerDetector", () => {
 		});
 
 		test("returns null when cached PM is invalid value", async () => {
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 
 			const invalidPmData = {
@@ -333,7 +333,7 @@ describe("PackageManagerDetector", () => {
 		test("creates cache file with correct content", async () => {
 			await PackageManagerDetector.saveCachedPm("pnpm");
 
-			const cacheFile = join(testHomeDir, ".claudekit", "install-info.json");
+			const cacheFile = join(testHomeDir, ".hyprkit", "install-info.json");
 			expect(existsSync(cacheFile)).toBe(true);
 
 			const { readFileSync } = await import("node:fs");
@@ -343,7 +343,7 @@ describe("PackageManagerDetector", () => {
 		});
 
 		test("creates config directory if not exists", async () => {
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			expect(existsSync(cacheDir)).toBe(false);
 
 			await PackageManagerDetector.saveCachedPm("npm");
@@ -354,7 +354,7 @@ describe("PackageManagerDetector", () => {
 		test("does not save unknown package manager", async () => {
 			await PackageManagerDetector.saveCachedPm("unknown");
 
-			const cacheFile = join(testHomeDir, ".claudekit", "install-info.json");
+			const cacheFile = join(testHomeDir, ".hyprkit", "install-info.json");
 			expect(existsSync(cacheFile)).toBe(false);
 		});
 	});
@@ -362,7 +362,7 @@ describe("PackageManagerDetector", () => {
 	describe("clearCache", () => {
 		test("removes cache file when exists", async () => {
 			// Create cache first
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 			const cacheFile = join(cacheDir, "install-info.json");
 			writeFileSync(cacheFile, JSON.stringify({ packageManager: "bun", detectedAt: Date.now() }));
@@ -382,7 +382,7 @@ describe("PackageManagerDetector", () => {
 	describe("findOwningPm", () => {
 		// Skip - triggers slow PM queries (>5s timeout in CI)
 		// Method tested indirectly via detect() when run locally
-		test.skip("returns PM that has claudekit-cli installed", async () => {
+		test.skip("returns PM that has hyprkit-cli installed", async () => {
 			const result = await PackageManagerDetector.findOwningPm();
 			if (result !== null) {
 				expect(["npm", "bun", "yarn", "pnpm"]).toContain(result);
@@ -392,46 +392,45 @@ describe("PackageManagerDetector", () => {
 
 	describe("detectFromBinaryPath", () => {
 		test("detects bun from bun install path", () => {
-			process.argv[1] = "/Users/user/.bun/install/global/node_modules/claudekit-cli/bin/ck.js";
+			process.argv[1] = "/Users/user/.bun/install/global/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("bun");
 		});
 
 		test("detects bun from .bun path on Windows-style", () => {
 			// On Windows with forward slashes after normalization
-			process.argv[1] = "C:/Users/user/.bun/install/global/node_modules/claudekit-cli/bin/ck.js";
+			process.argv[1] = "C:/Users/user/.bun/install/global/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("bun");
 		});
 
 		test("detects npm from /usr/local/lib/node_modules path", () => {
-			process.argv[1] = "/usr/local/lib/node_modules/claudekit-cli/bin/ck.js";
+			process.argv[1] = "/usr/local/lib/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("npm");
 		});
 
 		test("detects npm from Windows AppData npm path", () => {
-			process.argv[1] = "C:/Users/user/AppData/Roaming/npm/node_modules/claudekit-cli/bin/ck.js";
+			process.argv[1] = "C:/Users/user/AppData/Roaming/npm/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("npm");
 		});
 
 		test("detects pnpm from pnpm global path", () => {
-			process.argv[1] =
-				"/Users/user/.local/share/pnpm/global/5/node_modules/claudekit-cli/bin/ck.js";
+			process.argv[1] = "/Users/user/.local/share/pnpm/global/5/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("pnpm");
 		});
 
 		test("detects yarn from yarn global path", () => {
-			process.argv[1] = "/Users/user/.config/yarn/global/node_modules/claudekit-cli/bin/ck.js";
+			process.argv[1] = "/Users/user/.config/yarn/global/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("yarn");
 		});
 
 		test("detects yarn from Windows AppData Local path", () => {
 			process.argv[1] =
-				"C:/Users/user/AppData/Local/Yarn/Data/global/node_modules/claudekit-cli/bin/ck.js";
+				"C:/Users/user/AppData/Local/Yarn/Data/global/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("yarn");
 		});
 
 		test("detects yarn from Windows AppData Local path with backslashes", () => {
 			process.argv[1] =
-				"C:\\Users\\user\\AppData\\Local\\Yarn\\Data\\global\\node_modules\\claudekit-cli\\bin\\ck.js";
+				"C:\\Users\\user\\AppData\\Local\\Yarn\\Data\\global\\node_modules\\hyprkit-cli\\bin\\ck.js";
 			expect(detectFromBinaryPath()).toBe("yarn");
 		});
 
@@ -457,17 +456,17 @@ describe("PackageManagerDetector", () => {
 
 		test("detects npm from nvm path", () => {
 			process.argv[1] =
-				"/Users/user/.nvm/versions/node/v22.14.0/lib/node_modules/claudekit-cli/bin/ck.js";
+				"/Users/user/.nvm/versions/node/v22.14.0/lib/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("npm");
 		});
 
 		test("detects npm from Homebrew path", () => {
-			process.argv[1] = "/opt/homebrew/lib/node_modules/claudekit-cli/bin/ck.js";
+			process.argv[1] = "/opt/homebrew/lib/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("npm");
 		});
 
 		test("detects npm from Debian /usr/lib path", () => {
-			process.argv[1] = "/usr/lib/node_modules/claudekit-cli/bin/ck.js";
+			process.argv[1] = "/usr/lib/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("npm");
 		});
 
@@ -477,19 +476,18 @@ describe("PackageManagerDetector", () => {
 		});
 
 		test("detects npm from n version manager path", () => {
-			process.argv[1] =
-				"/usr/local/n/versions/node/22.0.0/lib/node_modules/claudekit-cli/bin/ck.js";
+			process.argv[1] = "/usr/local/n/versions/node/22.0.0/lib/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("npm");
 		});
 
 		test("detects npm from Windows nvm path", () => {
 			process.argv[1] =
-				"C:/Users/user/AppData/Roaming/nvm/v22.15.0/node_modules/claudekit-cli/bin/ck.js";
+				"C:/Users/user/AppData/Roaming/nvm/v22.15.0/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("npm");
 		});
 
-		test("falls back to npm for generic node_modules claudekit-cli path", () => {
-			process.argv[1] = "C:/Tools/custom-prefix/node_modules/claudekit-cli/bin/ck.js";
+		test("falls back to npm for generic node_modules hyprkit-cli path", () => {
+			process.argv[1] = "C:/Tools/custom-prefix/node_modules/hyprkit-cli/bin/ck.js";
 			expect(detectFromBinaryPath()).toBe("npm");
 		});
 	});
@@ -497,8 +495,8 @@ describe("PackageManagerDetector", () => {
 	describe("query checkFn strict matching", () => {
 		test("npm checkFn avoids substring false positives", () => {
 			const checkFn = getNpmQuery().checkFn;
-			const positive = '{"dependencies":{"claudekit-cli":{"version":"1.0.0"}}}';
-			const falsePositive = '{"dependencies":{"claudekit-cli-helper":{"version":"1.0.0"}}}';
+			const positive = '{"dependencies":{"hyprkit-cli":{"version":"1.0.0"}}}';
+			const falsePositive = '{"dependencies":{"hyprkit-cli-helper":{"version":"1.0.0"}}}';
 
 			expect(checkFn(positive)).toBe(true);
 			expect(checkFn(falsePositive)).toBe(false);
@@ -506,20 +504,20 @@ describe("PackageManagerDetector", () => {
 
 		test("bun checkFn avoids substring false positives", () => {
 			const checkFn = getBunQuery().checkFn;
-			expect(checkFn("  └── claudekit-cli@1.0.0")).toBe(true);
-			expect(checkFn("  └── claudekit-cli-helper@1.0.0")).toBe(false);
+			expect(checkFn("  └── hyprkit-cli@1.0.0")).toBe(true);
+			expect(checkFn("  └── hyprkit-cli-helper@1.0.0")).toBe(false);
 		});
 
 		test("yarn checkFn avoids substring false positives", () => {
 			const checkFn = getYarnQuery().checkFn;
-			expect(checkFn('info "claudekit-cli@1.0.0" has binaries')).toBe(true);
-			expect(checkFn('info "claudekit-cli-helper@1.0.0" has binaries')).toBe(false);
+			expect(checkFn('info "hyprkit-cli@1.0.0" has binaries')).toBe(true);
+			expect(checkFn('info "hyprkit-cli-helper@1.0.0" has binaries')).toBe(false);
 		});
 
 		test("pnpm checkFn avoids substring false positives", () => {
 			const checkFn = getPnpmQuery().checkFn;
-			expect(checkFn("  claudekit-cli 1.0.0")).toBe(true);
-			expect(checkFn("  claudekit-cli-helper 1.0.0")).toBe(false);
+			expect(checkFn("  hyprkit-cli 1.0.0")).toBe(true);
+			expect(checkFn("  hyprkit-cli-helper 1.0.0")).toBe(false);
 		});
 	});
 
@@ -547,7 +545,7 @@ describe("PackageManagerDetector", () => {
 	describe("detect - integration", () => {
 		test("updates cache when binary path disagrees with cached PM", async () => {
 			// Setup: cache says "npm"
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 			writeFileSync(
 				join(cacheDir, "install-info.json"),
@@ -587,7 +585,7 @@ describe("PackageManagerDetector", () => {
 			process.argv[1] = "/some/unknown/path/ck.js";
 
 			// Set up cache
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 			const cacheData = {
 				packageManager: "yarn",
@@ -616,7 +614,7 @@ describe("PackageManagerDetector", () => {
 			process.env.npm_execpath = undefined;
 
 			// Create empty cache dir but no cache file
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 
 			// We can't easily mock findOwningPm to return null without more complex setup
@@ -634,7 +632,7 @@ describe("PackageManagerDetector", () => {
 			process.env.npm_config_user_agent = undefined;
 			process.env.npm_execpath = undefined;
 
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 			writeFileSync(join(cacheDir, "install-info.json"), "not valid json at all");
 
@@ -644,7 +642,7 @@ describe("PackageManagerDetector", () => {
 		});
 
 		test("handles cache with missing detectedAt field", async () => {
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 
 			const badCache = { packageManager: "bun" }; // missing detectedAt
@@ -655,7 +653,7 @@ describe("PackageManagerDetector", () => {
 		});
 
 		test("handles cache boundary - just inside 30 days old", async () => {
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 
 			const now = 1_800_000_000_000;
@@ -676,7 +674,7 @@ describe("PackageManagerDetector", () => {
 		});
 
 		test("handles cache boundary - just over 30 days old", async () => {
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 
 			// Just over 30 days - should be expired
@@ -691,7 +689,7 @@ describe("PackageManagerDetector", () => {
 		});
 
 		test("rejects cache with future detectedAt timestamp", async () => {
-			const cacheDir = join(testHomeDir, ".claudekit");
+			const cacheDir = join(testHomeDir, ".hyprkit");
 			mkdirSync(cacheDir, { recursive: true });
 
 			const futureCache = {

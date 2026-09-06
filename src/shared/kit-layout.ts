@@ -33,7 +33,7 @@ export function resolveKitLayout(projectRoot: string): KitLayout {
 		);
 		return KitLayoutSchema.parse({
 			...DEFAULT_KIT_LAYOUT,
-			...(parsed.claudekit ?? {}),
+			...(parsed.hyprkit ?? parsed.claudekit ?? {}),
 		});
 	} catch {
 		return DEFAULT_KIT_LAYOUT;

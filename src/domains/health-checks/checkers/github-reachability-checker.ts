@@ -180,7 +180,7 @@ function createDefaultTls(): GitHubReachabilityDeps["tls"] {
 					url,
 					{
 						headers: {
-							"User-Agent": "claudekit-cli-doctor/1.0",
+							"User-Agent": "hyprkit-cli-doctor/1.0",
 						},
 					},
 					(res) => {

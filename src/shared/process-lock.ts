@@ -33,7 +33,7 @@ let cleanupRegistered = false;
  * Get locks directory path
  */
 function getLocksDir(): string {
-	return join(os.homedir(), ".claudekit", "locks");
+	return join(os.homedir(), ".hyprkit", "locks");
 }
 
 /**

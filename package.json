@@ -1,18 +1,18 @@
 {
-	"name": "claudekit-cli",
-	"version": "4.5.2",
-	"description": "CLI tool for bootstrapping and updating ClaudeKit projects",
+	"name": "hyprkit-cli",
+	"version": "0.1.0",
+	"description": "CLI tool for bootstrapping and updating HyprKit projects (fork of claudekit-cli)",
 	"type": "module",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/mrgoonie/claudekit-cli.git"
+		"url": "git+https://github.com/pcldev/hyprkit-cli.git"
 	},
 	"publishConfig": {
 		"access": "public",
 		"registry": "https://registry.npmjs.org"
 	},
 	"bin": {
-		"ck": "bin/ck.js"
+		"hk": "bin/ck.js"
 	},
 	"files": [
 		"bin/ck.js",
@@ -20,7 +20,8 @@
 		"bin/postinstall-self-heal.cjs",
 		"dist/index.js",
 		"dist/ui/",
-		"cli-manifest.json"
+		"cli-manifest.json",
+		"NOTICE.md"
 	],
 	"scripts": {
 		"dev": "bun run src/index.ts",
@@ -53,16 +54,16 @@
 		"help:check-parity": "bun run scripts/check-help-parity.ts",
 		"manifest:generate": "bun run scripts/generate-cli-manifest.ts",
 		"docs:generate": "bun run scripts/generate-cli-reference.ts",
-		"prepublishOnly": "bun run help:check-parity && bun run manifest:generate && bun run docs:generate"
+		"prepublishOnly": "bun run build"
 	},
 	"keywords": [
 		"cli",
-		"claudekit",
+		"hyprkit",
+		"claude-code",
 		"boilerplate",
-		"bootstrap",
-		"template"
+		"bootstrap"
 	],
-	"author": "ClaudeKit",
+	"author": "Phan Cong Long",
 	"license": "MIT",
 	"engines": {
 		"node": ">=18.0.0"

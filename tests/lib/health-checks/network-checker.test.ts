@@ -383,7 +383,7 @@ describe("NetworkChecker", () => {
 				}),
 			);
 			const userAgent = (call[1]?.headers as Record<string, string>)["User-Agent"];
-			expect(userAgent).toMatch(/^claudekit-cli\/.+$/);
+			expect(userAgent).toMatch(/^hyprkit-cli\/.+$/);
 			// Verify signal was passed
 			expect(call[1]?.signal).toBeDefined();
 		});

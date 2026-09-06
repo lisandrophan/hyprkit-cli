@@ -14,7 +14,7 @@ import {
 
 describe("skill-uninstaller", () => {
 	const home = homedir();
-	const testBase = join(home, ".claudekit", "uninstaller-test");
+	const testBase = join(home, ".hyprkit", "uninstaller-test");
 	const claudeSkillsPath = join(home, ".claude/skills");
 
 	beforeAll(async () => {

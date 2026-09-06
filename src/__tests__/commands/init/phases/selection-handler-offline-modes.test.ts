@@ -239,12 +239,12 @@ describe("selection-handler offline modes", () => {
 	describe("regression test: Issue #298 exact scenario", () => {
 		it("handles exact user scenario from Issue #298", () => {
 			// Exact reproduction from GitHub issue:
-			// ck init -g --prefix -y --kit engineer --kit-path /root/.claudekit/.git/claudekit-engineer
+			// ck init -g --prefix -y --kit engineer --kit-path /root/.hyprkit/.git/claudekit-engineer
 			const ctx = createOfflineContext({
 				global: true,
 				yes: true,
 				kit: "engineer",
-				kitPath: "/root/.claudekit/.git/claudekit-engineer",
+				kitPath: "/root/.hyprkit/.git/claudekit-engineer",
 			});
 
 			const isOfflineMode = !!(ctx.options.kitPath || ctx.options.archive);

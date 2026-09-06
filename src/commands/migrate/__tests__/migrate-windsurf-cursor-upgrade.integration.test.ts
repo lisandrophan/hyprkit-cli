@@ -15,7 +15,7 @@
  *   - Fresh/idempotent: call installSkillDirectories() with patched providers paths.
  *   - Upgrade: build ReconcileInput + call reconcile() to confirm delete actions,
  *     then verify installSkillDirectories() writes to native path.
- *   - Registry mock: intercept addPortableInstallation so no writes to ~/.claudekit.
+ *   - Registry mock: intercept addPortableInstallation so no writes to ~/.hyprkit.
  *   - No real HOME writes — provider paths are fully redirected to tmpdir.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";

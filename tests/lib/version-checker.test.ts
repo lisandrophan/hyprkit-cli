@@ -289,7 +289,7 @@ describe("CliVersionChecker", () => {
 				ok: true,
 				json: () =>
 					Promise.resolve({
-						name: "claudekit-cli",
+						name: "hyprkit-cli",
 						"dist-tags": { latest: "2.0.0" },
 						versions: {},
 						time: {},
@@ -317,7 +317,7 @@ describe("CliVersionChecker", () => {
 				ok: true,
 				json: () =>
 					Promise.resolve({
-						name: "claudekit-cli",
+						name: "hyprkit-cli",
 						"dist-tags": { latest: "3.36.1", dev: "3.36.0-dev.37" },
 						versions: {},
 						time: {},
@@ -344,7 +344,7 @@ describe("CliVersionChecker", () => {
 				ok: true,
 				json: () =>
 					Promise.resolve({
-						name: "claudekit-cli",
+						name: "hyprkit-cli",
 						"dist-tags": { latest: "3.36.1", dev: "3.37.0-dev.1" },
 						versions: {},
 						time: {},
@@ -371,7 +371,7 @@ describe("CliVersionChecker", () => {
 				ok: true,
 				json: () =>
 					Promise.resolve({
-						name: "claudekit-cli",
+						name: "hyprkit-cli",
 						"dist-tags": { latest: "1.0.0" },
 						versions: {},
 						time: {},
@@ -414,7 +414,7 @@ describe("CliVersionChecker", () => {
 				ok: true,
 				json: () =>
 					Promise.resolve({
-						name: "claudekit-cli",
+						name: "hyprkit-cli",
 						"dist-tags": { latest: "2.0.0" },
 						versions: {},
 						time: {},
@@ -432,7 +432,7 @@ describe("CliVersionChecker", () => {
 			currentVersion: "1.0.0",
 			latestVersion: "2.0.0",
 			updateAvailable: true,
-			releaseUrl: "https://www.npmjs.com/package/claudekit-cli",
+			releaseUrl: "https://www.npmjs.com/package/hyprkit-cli",
 		};
 
 		// Just verify it doesn't throw
@@ -444,7 +444,7 @@ describe("CliVersionChecker", () => {
 			currentVersion: "1.0.0",
 			latestVersion: "1.0.0",
 			updateAvailable: false,
-			releaseUrl: "https://www.npmjs.com/package/claudekit-cli",
+			releaseUrl: "https://www.npmjs.com/package/hyprkit-cli",
 		};
 
 		// Just verify it doesn't throw
@@ -464,7 +464,7 @@ describe("CliVersionChecker", () => {
 				ok: true,
 				json: () =>
 					Promise.resolve({
-						name: "claudekit-cli",
+						name: "hyprkit-cli",
 						"dist-tags": { latest: "3.31.0" },
 						versions: {},
 						time: {},
@@ -491,7 +491,7 @@ describe("CliVersionChecker", () => {
 				ok: true,
 				json: () =>
 					Promise.resolve({
-						name: "claudekit-cli",
+						name: "hyprkit-cli",
 						"dist-tags": { latest: "2.15.1" },
 						versions: {},
 						time: {},
@@ -517,7 +517,7 @@ describe("CliVersionChecker", () => {
 				ok: true,
 				json: () =>
 					Promise.resolve({
-						name: "claudekit-cli",
+						name: "hyprkit-cli",
 						"dist-tags": { latest: "3.32.0" },
 						versions: {},
 						time: {},
@@ -545,7 +545,7 @@ describe("CliVersionChecker", () => {
 				ok: true,
 				json: () =>
 					Promise.resolve({
-						name: "claudekit-cli",
+						name: "hyprkit-cli",
 						"dist-tags": { latest: "3.36.1" },
 						versions: {},
 						time: {},

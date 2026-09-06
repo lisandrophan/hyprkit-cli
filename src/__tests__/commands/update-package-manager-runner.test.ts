@@ -10,7 +10,7 @@ describe("package-manager-runner native dependency failures", () => {
 	it("detects better-sqlite3 node-gyp failures", () => {
 		const message = [
 			"prebuild-install warn install No prebuilt binaries found",
-			"npm error path C:\\Users\\Admin\\AppData\\Roaming\\npm\\node_modules\\claudekit-cli\\node_modules\\better-sqlite3",
+			"npm error path C:\\Users\\Admin\\AppData\\Roaming\\npm\\node_modules\\hyprkit-cli\\node_modules\\better-sqlite3",
 			"npm error gyp ERR! stack Error: Could not find any Visual Studio installation to use",
 		].join("\n");
 
@@ -26,7 +26,7 @@ describe("package-manager-runner native dependency failures", () => {
 			throw new Error(
 				[
 					"prebuild-install warn install No prebuilt binaries found",
-					"npm error path node_modules/claudekit-cli/node_modules/better-sqlite3",
+					"npm error path node_modules/hyprkit-cli/node_modules/better-sqlite3",
 					"npm error gyp ERR! stack Error: Could not find any Visual Studio installation to use",
 				].join("\n"),
 			);
@@ -36,7 +36,7 @@ describe("package-manager-runner native dependency failures", () => {
 
 		let thrown: unknown;
 		try {
-			await runPackageManagerUpdate("npm.cmd install -g claudekit-cli@4.3.1", "npm", {
+			await runPackageManagerUpdate("npm.cmd install -g hyprkit-cli@4.3.1", "npm", {
 				execAsyncFn,
 				spinnerStart,
 				spinnerStop,
@@ -49,8 +49,8 @@ describe("package-manager-runner native dependency failures", () => {
 		const message = thrown instanceof Error ? thrown.message : String(thrown);
 		expect(message).toContain("native optional dependency");
 		expect(message).toContain("should not require native SQLite");
-		expect(message).toContain("Manual update: npm.cmd install -g claudekit-cli@4.3.1");
-		expect(execAsyncFn).toHaveBeenCalledWith("npm.cmd install -g claudekit-cli@4.3.1", {
+		expect(message).toContain("Manual update: npm.cmd install -g hyprkit-cli@4.3.1");
+		expect(execAsyncFn).toHaveBeenCalledWith("npm.cmd install -g hyprkit-cli@4.3.1", {
 			timeout: CLI_UPDATE_INSTALL_TIMEOUT_MS,
 		});
 		expect(spinnerStop).toHaveBeenCalledWith("Update failed");

@@ -40,14 +40,14 @@ export class GitCloneManager {
 
 	constructor() {
 		// Use system temp with proper cross-platform fallbacks
-		// Priority: TMPDIR → TEMP → TMP → HOME/.claudekit/tmp → USERPROFILE/.claudekit/tmp → os.tmpdir()
+		// Priority: TMPDIR → TEMP → TMP → HOME/.hyprkit/tmp → USERPROFILE/.hyprkit/tmp → os.tmpdir()
 		const homeDir = process.env.HOME || process.env.USERPROFILE;
 		this.tempBaseDir =
 			process.env.TMPDIR ||
 			process.env.TEMP ||
 			process.env.TMP ||
-			(homeDir ? path.join(homeDir, ".claudekit", "tmp") : null) ||
-			path.join(os.tmpdir(), ".claudekit", "tmp");
+			(homeDir ? path.join(homeDir, ".hyprkit", "tmp") : null) ||
+			path.join(os.tmpdir(), ".hyprkit", "tmp");
 	}
 
 	/**

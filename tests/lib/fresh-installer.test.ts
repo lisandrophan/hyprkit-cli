@@ -54,7 +54,7 @@ describe("Fresh Installer", () => {
 	});
 
 	function getBackupDirs(): string[] {
-		const backupRoot = join(testPaths.testHome, ".claudekit", "backups");
+		const backupRoot = join(testPaths.testHome, ".hyprkit", "backups");
 		if (!existsSync(backupRoot)) {
 			return [];
 		}

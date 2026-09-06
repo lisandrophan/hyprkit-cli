@@ -85,7 +85,7 @@ describe("synchronizePackageJsonVersion", () => {
 		try {
 			writeFileSync(
 				packageJsonPath,
-				`${JSON.stringify({ name: "claudekit-cli", version: "3.40.1-dev.1" }, null, "\t")}\n`,
+				`${JSON.stringify({ name: "hyprkit-cli", version: "3.40.1-dev.1" }, null, "\t")}\n`,
 			);
 
 			expect(synchronizePackageJsonVersion("3.40.2", packageJsonPath)).toBe(true);
@@ -102,7 +102,7 @@ describe("synchronizePackageJsonVersion", () => {
 		try {
 			writeFileSync(
 				packageJsonPath,
-				`${JSON.stringify({ name: "claudekit-cli", version: "3.40.2" }, null, "\t")}\n`,
+				`${JSON.stringify({ name: "hyprkit-cli", version: "3.40.2" }, null, "\t")}\n`,
 			);
 
 			expect(synchronizePackageJsonVersion("3.40.2", packageJsonPath)).toBe(false);

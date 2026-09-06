@@ -29,7 +29,7 @@ import { join } from "node:path";
  */
 export interface TmpHomeOptions {
 	/**
-	 * Registry to write at ~/.claudekit/portable-registry.json.
+	 * Registry to write at ~/.hyprkit/portable-registry.json.
 	 * Pass undefined to skip creating the registry (simulates fresh state).
 	 */
 	registry?: PortableRegistryV3 | null;
@@ -44,7 +44,7 @@ export interface TmpHomeOptions {
 
 	/**
 	 * Extra files to write verbatim. Key = path relative to homeDir.
-	 * e.g. { ".claudekit/some-config.json": JSON.stringify({...}) }
+	 * e.g. { ".hyprkit/some-config.json": JSON.stringify({...}) }
 	 */
 	extraFiles?: Record<string, string>;
 }
@@ -147,11 +147,11 @@ export async function makeTmpHome(opts: TmpHomeOptions = {}): Promise<TmpHome> {
 
 	// ── Base dirs ────────────────────────────────────────────────────────────
 	await mkdir(homeDir, { recursive: true });
-	await mkdir(join(homeDir, ".claudekit"), { recursive: true });
+	await mkdir(join(homeDir, ".hyprkit"), { recursive: true });
 
 	// ── Registry ─────────────────────────────────────────────────────────────
 	if (opts.registry !== undefined && opts.registry !== null) {
-		const registryPath = join(homeDir, ".claudekit", "portable-registry.json");
+		const registryPath = join(homeDir, ".hyprkit", "portable-registry.json");
 		await writeFile(registryPath, JSON.stringify(opts.registry, null, 2), "utf-8");
 	}
 	// If registry is null/undefined, no file → server sees fresh state → suggestedMode=install

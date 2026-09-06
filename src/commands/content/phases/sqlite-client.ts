@@ -29,7 +29,7 @@ export function createMissingSqliteDriverError(cause: unknown): OptionalSqliteDr
 			"Most ClaudeKit CLI commands do not need it and should continue to work.",
 			"",
 			"To use `ck content`, reinstall the CLI with optional dependencies for your active Node.js runtime:",
-			"  npm install -g claudekit-cli --include=optional",
+			"  npm install -g hyprkit-cli --include=optional",
 			"",
 			"If npm attempts a source build on Windows, install Visual Studio Build Tools with the Desktop development with C++ workload.",
 		].join("\n") + detail,

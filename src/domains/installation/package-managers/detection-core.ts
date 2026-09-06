@@ -78,7 +78,7 @@ export function detectFromBinaryPath(): PackageManager {
 
 		// Last-resort fallback: path clearly points to this package under node_modules.
 		// If no PM-specific marker matched above, treat it as npm-compatible.
-		if (normalized.includes("/node_modules/claudekit-cli/")) {
+		if (normalized.includes("/node_modules/hyprkit-cli/")) {
 			return "npm";
 		}
 

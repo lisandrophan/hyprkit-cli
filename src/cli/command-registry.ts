@@ -33,7 +33,7 @@ export function registerCommands(cli: ReturnType<typeof cac>): void {
 	cli
 		.command("new", "Bootstrap a new ClaudeKit project (with interactive version selection)")
 		.option("--dir <dir>", "Target directory (default: .)")
-		.option("--kit <kit>", "Kit to use: engineer, marketing, all, or comma-separated")
+		.option("--kit <kit>", "Kit to use: hyprkit, engineer, marketing, all, or comma-separated")
 		.option(
 			"-r, --release <version>",
 			"Skip version selection, use specific version (e.g., latest, v1.0.0)",
@@ -71,7 +71,7 @@ export function registerCommands(cli: ReturnType<typeof cac>): void {
 	cli
 		.command("init", "Initialize or update ClaudeKit project (with interactive version selection)")
 		.option("--dir <dir>", "Target directory (default: .)")
-		.option("--kit <kit>", "Kit to use: engineer, marketing, all, or comma-separated")
+		.option("--kit <kit>", "Kit to use: hyprkit, engineer, marketing, all, or comma-separated")
 		.option(
 			"-r, --release <version>",
 			"Skip version selection, use specific version (e.g., latest, v1.0.0)",
@@ -175,7 +175,7 @@ export function registerCommands(cli: ReturnType<typeof cac>): void {
 	// Versions command
 	cli
 		.command("versions", "List available versions of ClaudeKit repositories")
-		.option("--kit <kit>", "Filter by specific kit (engineer, marketing)")
+		.option("--kit <kit>", "Filter by specific kit (hyprkit, engineer, marketing)")
 		.option("--limit <limit>", "Number of releases to show (default: 30)")
 		.option("--all", "Show all releases including prereleases")
 		.action(async (options) => {
@@ -201,7 +201,7 @@ export function registerCommands(cli: ReturnType<typeof cac>): void {
 		.option("-l, --local", "Uninstall only local installation (current project)")
 		.option("-g, --global", "Uninstall only global installation (~/.claude/)")
 		.option("-A, --all", "Uninstall from both local and global locations")
-		.option("-k, --kit <type>", "Uninstall specific kit only (engineer, marketing)")
+		.option("-k, --kit <type>", "Uninstall specific kit only (hyprkit, engineer, marketing)")
 		.option("--dry-run", "Preview what would be removed without deleting")
 		.option("--force-overwrite", "Delete even user-modified files (requires confirmation)")
 		.action(async (options) => {
@@ -281,7 +281,7 @@ export function registerCommands(cli: ReturnType<typeof cac>): void {
 	// Config command with subcommands
 	cli
 		.command("config [action] [key] [value]", "Manage ClaudeKit configuration")
-		.option("-g, --global", "Use global config (~/.claudekit/config.json)")
+		.option("-g, --global", "Use global config (~/.hyprkit/config.json)")
 		.option("-l, --local", "Use local config (.claude/.ck.json)")
 		.option("--json", "Output in JSON format")
 		.option("--port <port>", "Port for UI server (default: auto)")

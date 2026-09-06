@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { cleanupMigratedHooksForProviders } from "../migrated-hooks-cleanup.js";
 import { readPortableRegistry, writePortableRegistry } from "../portable-registry.js";
 
-const registryPath = join(homedir(), ".claudekit", "portable-registry.json");
+const registryPath = join(homedir(), ".hyprkit", "portable-registry.json");
 
 describe("cleanupMigratedHooksForProviders", () => {
 	let testDir: string;

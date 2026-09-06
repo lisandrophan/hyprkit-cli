@@ -15,12 +15,12 @@ function isSafeRelativeLayoutPath(value: string): boolean {
 }
 
 // Kit types
-export const KitType = z.enum(["engineer", "marketing"]);
+export const KitType = z.enum(["hyprkit", "engineer", "marketing"]);
 export type KitType = z.infer<typeof KitType>;
 
 // Runtime validation helper - validates string is valid KitType before unsafe casts
 export function isValidKitType(value: string): value is KitType {
-	return value === "engineer" || value === "marketing";
+	return value === "hyprkit" || value === "engineer" || value === "marketing";
 }
 
 // Kit configuration
@@ -39,6 +39,9 @@ export const KitLayoutSchema = z.object({
 export type KitLayout = z.infer<typeof KitLayoutSchema>;
 
 export const ClaudeKitPackageMetadataSchema = z.object({
+	// A kit declares its layout under its own name. `claudekit` stays accepted so
+	// the engineer/marketing kits keep working through this fork.
+	hyprkit: KitLayoutSchema.partial().optional(),
 	claudekit: KitLayoutSchema.partial().optional(),
 });
 
@@ -49,6 +52,12 @@ export const DEFAULT_KIT_LAYOUT: KitLayout = {
 
 // Available kits
 export const AVAILABLE_KITS: Record<KitType, KitConfig> = {
+	hyprkit: {
+		name: "HyprKit",
+		repo: "hyprkit",
+		owner: "pcldev",
+		description: "Personal Claude Code kit: agents, skills, hooks and rules",
+	},
 	engineer: {
 		name: "ClaudeKit Engineer",
 		repo: "claudekit-engineer",

@@ -4,7 +4,7 @@ import os from "node:os";
 import { join } from "node:path";
 import { getLockPaths, withProcessLock } from "@/shared/process-lock";
 
-const LOCKS_DIR = join(os.homedir(), ".claudekit", "locks");
+const LOCKS_DIR = join(os.homedir(), ".hyprkit", "locks");
 
 describe("withProcessLock", () => {
 	beforeEach(async () => {

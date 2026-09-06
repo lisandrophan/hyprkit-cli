@@ -6,7 +6,7 @@
  * for the same markdown input across all supported formats (0-6).
  *
  * CJS parser: claudekit-engineer/.claude/skills/_shared/lib/plan-table-parser.cjs
- * TS parser:  claudekit-cli/src/domains/plan-parser/plan-table-parser.ts
+ * TS parser:  hyprkit-cli/src/domains/plan-parser/plan-table-parser.ts
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 /**
  * Tests for portable registry v3.0 migration (Phase 1)
- * Note: These tests isolate ~/.claudekit/ through CK_TEST_HOME.
+ * Note: These tests isolate ~/.hyprkit/ through CK_TEST_HOME.
  */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -30,7 +30,7 @@ function getRegistryDir(): string {
 	if (!testHome) {
 		throw new Error("testHome is not initialized");
 	}
-	return join(testHome, ".claudekit");
+	return join(testHome, ".hyprkit");
 }
 
 function getRegistryPath(): string {

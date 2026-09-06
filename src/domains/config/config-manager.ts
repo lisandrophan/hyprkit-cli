@@ -231,7 +231,7 @@ export class ConfigManager {
 	 * Resolve folder configuration from multiple sources (priority order):
 	 * 1. CLI flags (--docs-dir, --plans-dir)
 	 * 2. Project config (.claude/.ck.json or ~/.claude/.ck.json in global mode)
-	 * 3. Global config (~/.claudekit/config.json folders section)
+	 * 3. Global config (~/.hyprkit/config.json folders section)
 	 * 4. Defaults (docs, plans)
 	 * @param projectDir - The project directory
 	 * @param cliOptions - CLI options for docs and plans directories
@@ -245,7 +245,7 @@ export class ConfigManager {
 		// Start with defaults
 		const result: Required<FoldersConfig> = { ...DEFAULT_FOLDERS };
 
-		// Layer 3: Global config from ~/.claudekit/config.json
+		// Layer 3: Global config from ~/.hyprkit/config.json
 		const globalConfig = await ConfigManager.load();
 		if (globalConfig.folders?.docs) result.docs = globalConfig.folders.docs;
 		if (globalConfig.folders?.plans) result.plans = globalConfig.folders.plans;

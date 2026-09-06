@@ -17,7 +17,7 @@ describe("destructive operation backup manager", () => {
 
 	beforeEach(async () => {
 		testPaths = setupTestPaths();
-		backupsRoot = join(testPaths.testHome, ".claudekit", "backups");
+		backupsRoot = join(testPaths.testHome, ".hyprkit", "backups");
 		await mkdir(backupsRoot, { recursive: true });
 	});
 

@@ -27,7 +27,7 @@ export async function handleBackupsList(options: BackupsListOptions): Promise<vo
 		console.log();
 		console.log(pc.yellow("No ClaudeKit recovery backups found."));
 		console.log();
-		console.log(pc.dim("  Backups are stored under: ~/.claudekit/backups/"));
+		console.log(pc.dim("  Backups are stored under: ~/.hyprkit/backups/"));
 		console.log();
 		return;
 	}

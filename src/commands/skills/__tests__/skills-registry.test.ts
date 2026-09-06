@@ -18,7 +18,7 @@ import {
 
 describe("skill-registry", () => {
 	const home = homedir();
-	const registryPath = join(home, ".claudekit", "skill-registry.json");
+	const registryPath = join(home, ".hyprkit", "skill-registry.json");
 
 	// Store original registry if exists
 	let originalRegistry: string | null = null;
@@ -86,7 +86,7 @@ describe("skill-registry", () => {
 
 		it("should return empty registry for corrupted file", async () => {
 			// Write invalid JSON
-			mkdirSync(join(home, ".claudekit"), { recursive: true });
+			mkdirSync(join(home, ".hyprkit"), { recursive: true });
 			writeFileSync(registryPath, "invalid json {{{", "utf-8");
 
 			const registry = await readRegistry();
@@ -495,7 +495,7 @@ describe("skill-registry", () => {
 
 		it("should keep valid entries", async () => {
 			// Create a real directory to reference
-			const realPath = join(home, ".claudekit", "sync-test-skill");
+			const realPath = join(home, ".hyprkit", "sync-test-skill");
 			mkdirSync(realPath, { recursive: true });
 
 			try {

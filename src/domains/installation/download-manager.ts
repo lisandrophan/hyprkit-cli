@@ -197,12 +197,7 @@ export class DownloadManager {
 				);
 			}
 
-			const fallbackTempDir = join(
-				homeDir,
-				".claudekit",
-				"tmp",
-				`claudekit-${timestamp}-${counter}`,
-			);
+			const fallbackTempDir = join(homeDir, ".hyprkit", "tmp", `claudekit-${timestamp}-${counter}`);
 			try {
 				await mkdir(fallbackTempDir, { recursive: true });
 				logger.debug(`Created temp directory (fallback): ${fallbackTempDir}`);

@@ -18,7 +18,7 @@ import type { ContentCommandOptions } from "./types.js";
 
 export { approveContentCmd, queueContent, rejectContentCmd } from "./content-review-commands.js";
 
-const LOCK_DIR = join(homedir(), ".claudekit", "locks");
+const LOCK_DIR = join(homedir(), ".hyprkit", "locks");
 const LOCK_NAME = "ck-content";
 
 // ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ export async function statusContent(): Promise<void> {
  * Pass --tail (options.tail) to follow in real-time via `tail -f`.
  */
 export async function logsContent(options: ContentCommandOptions): Promise<void> {
-	const logDir = join(homedir(), ".claudekit", "logs");
+	const logDir = join(homedir(), ".hyprkit", "logs");
 	const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
 	const logPath = join(logDir, `content-${dateStr}.log`);
 

@@ -68,14 +68,14 @@ describe("PathResolver", () => {
 	});
 
 	describe("getConfigDir", () => {
-		it("should return ~/.claudekit for local mode (default)", () => {
+		it("should return ~/.hyprkit for local mode (default)", () => {
 			const configDir = PathResolver.getConfigDir(false);
-			expect(configDir).toBe(join(homedir(), ".claudekit"));
+			expect(configDir).toBe(join(homedir(), ".hyprkit"));
 		});
 
-		it("should return ~/.claudekit when global flag is false", () => {
+		it("should return ~/.hyprkit when global flag is false", () => {
 			const configDir = PathResolver.getConfigDir(false);
-			expect(configDir).toBe(join(homedir(), ".claudekit"));
+			expect(configDir).toBe(join(homedir(), ".hyprkit"));
 		});
 
 		if (originalPlatform === "win32") {
@@ -129,7 +129,7 @@ describe("PathResolver", () => {
 	describe("getConfigFile", () => {
 		it("should return config.json in local mode directory", () => {
 			const configFile = PathResolver.getConfigFile(false);
-			expect(configFile).toBe(join(homedir(), ".claudekit", "config.json"));
+			expect(configFile).toBe(join(homedir(), ".hyprkit", "config.json"));
 		});
 
 		it("should return config.json in global mode directory", () => {
@@ -149,9 +149,9 @@ describe("PathResolver", () => {
 	});
 
 	describe("getCacheDir", () => {
-		it("should return ~/.claudekit/cache for local mode", () => {
+		it("should return ~/.hyprkit/cache for local mode", () => {
 			const cacheDir = PathResolver.getCacheDir(false);
-			expect(cacheDir).toBe(join(homedir(), ".claudekit", "cache"));
+			expect(cacheDir).toBe(join(homedir(), ".hyprkit", "cache"));
 		});
 
 		if (originalPlatform === "win32") {
@@ -374,7 +374,7 @@ describe("PathResolver", () => {
 			process.env.CK_TEST_HOME = testHome;
 
 			const configDir = PathResolver.getConfigDir(false);
-			expect(configDir).toBe(join(testHome, ".claudekit"));
+			expect(configDir).toBe(join(testHome, ".hyprkit"));
 		});
 
 		it("should use test home for getCacheDir when CK_TEST_HOME is set", () => {
@@ -382,7 +382,7 @@ describe("PathResolver", () => {
 			process.env.CK_TEST_HOME = testHome;
 
 			const cacheDir = PathResolver.getCacheDir(false);
-			expect(cacheDir).toBe(join(testHome, ".claudekit", "cache"));
+			expect(cacheDir).toBe(join(testHome, ".hyprkit", "cache"));
 		});
 
 		it("should use test home for getGlobalKitDir when CK_TEST_HOME is set", () => {
@@ -397,11 +397,11 @@ describe("PathResolver", () => {
 			process.env.CK_TEST_HOME = undefined;
 
 			const configDir = PathResolver.getConfigDir(false);
-			expect(configDir).toContain(".claudekit");
+			expect(configDir).toContain(".hyprkit");
 			expect(configDir.includes("test-")).toBe(false);
 
 			const cacheDir = PathResolver.getCacheDir(false);
-			expect(cacheDir).toContain(".claudekit");
+			expect(cacheDir).toContain(".hyprkit");
 			expect(cacheDir.includes("test-")).toBe(false);
 
 			const globalKitDir = PathResolver.getGlobalKitDir();
@@ -417,7 +417,7 @@ describe("PathResolver", () => {
 			const configDirLocal = PathResolver.getConfigDir(false);
 			const configDirGlobal = PathResolver.getConfigDir(true);
 
-			expect(configDirLocal).toBe(join(testHome, ".claudekit"));
+			expect(configDirLocal).toBe(join(testHome, ".hyprkit"));
 			expect(configDirGlobal).toBe(join(testHome, ".config", "claude"));
 			expect(configDirLocal).not.toBe(configDirGlobal);
 		});
@@ -430,7 +430,7 @@ describe("PathResolver", () => {
 			const cacheDirLocal = PathResolver.getCacheDir(false);
 			const cacheDirGlobal = PathResolver.getCacheDir(true);
 
-			expect(cacheDirLocal).toBe(join(testHome, ".claudekit", "cache"));
+			expect(cacheDirLocal).toBe(join(testHome, ".hyprkit", "cache"));
 			expect(cacheDirGlobal).toBe(join(testHome, ".cache", "claude"));
 			expect(cacheDirLocal).not.toBe(cacheDirGlobal);
 		});
@@ -444,7 +444,7 @@ describe("PathResolver", () => {
 			const cacheDir = PathResolver.getCacheDir(false);
 			const globalKitDir = PathResolver.getGlobalKitDir();
 
-			// All resolved paths must be under the test home, not the default ~/.claudekit or ~/.claude
+			// All resolved paths must be under the test home, not the default ~/.hyprkit or ~/.claude
 			// Note: on Windows, tmpdir() is under homedir(), so we verify positive containment
 			// under testHome rather than negative exclusion of realHome
 			expect(configDir.startsWith(testHome)).toBe(true);
@@ -501,8 +501,8 @@ describe("PathResolver", () => {
 			// Local and global should be different
 			expect(localConfig).not.toBe(globalConfig);
 
-			// Local should always be ~/.claudekit
-			expect(localConfig).toBe(join(homedir(), ".claudekit"));
+			// Local should always be ~/.hyprkit
+			expect(localConfig).toBe(join(homedir(), ".hyprkit"));
 		});
 
 		it("should use consistent cache directories per mode", () => {

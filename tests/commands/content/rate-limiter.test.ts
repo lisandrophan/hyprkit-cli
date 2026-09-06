@@ -33,8 +33,8 @@ describe("Rate Limiter", () => {
 			topPerformingCount: 10,
 		},
 		maxContentPerDay: 10,
-		contentDir: "~/.claudekit/content/",
-		dbPath: "~/.claudekit/content.db",
+		contentDir: "~/.hyprkit/content/",
+		dbPath: "~/.hyprkit/content.db",
 	};
 
 	const defaultState: ContentState = {

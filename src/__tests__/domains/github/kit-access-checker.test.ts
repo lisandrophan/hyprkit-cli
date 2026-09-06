@@ -254,9 +254,9 @@ describe("kit-access-checker", () => {
 	});
 
 	describe("partial access (one kit accessible)", () => {
-		test("returns only engineer when marketing returns 404", async () => {
+		test("returns only engineer when every other kit returns 404", async () => {
 			spyOn(GitHubClient.prototype, "checkAccess").mockImplementation(async (config) => {
-				if (config.repo === AVAILABLE_KITS.marketing.repo) {
+				if (config.repo !== AVAILABLE_KITS.engineer.repo) {
 					throw makeHttpError(404, "Not Found");
 				}
 				return true;
@@ -270,9 +270,9 @@ describe("kit-access-checker", () => {
 			expect(mockSpinner.succeed).toHaveBeenCalled();
 		});
 
-		test("returns only marketing when engineer returns 404", async () => {
+		test("returns only marketing when every other kit returns 404", async () => {
 			spyOn(GitHubClient.prototype, "checkAccess").mockImplementation(async (config) => {
-				if (config.repo === AVAILABLE_KITS.engineer.repo) {
+				if (config.repo !== AVAILABLE_KITS.marketing.repo) {
 					throw makeHttpError(404, "Not Found");
 				}
 				return true;

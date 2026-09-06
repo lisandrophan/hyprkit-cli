@@ -15,7 +15,7 @@ import { join, resolve } from "node:path";
 
 /**
  * Known subcommands — from knownActions Set in planCommand() dispatcher.
- * Source: claudekit-cli/src/commands/plan/plan-command.ts
+ * Source: hyprkit-cli/src/commands/plan/plan-command.ts
  */
 const VALID_SUBCOMMANDS = new Set([
 	"parse",
@@ -30,7 +30,7 @@ const VALID_SUBCOMMANDS = new Set([
 
 /**
  * Valid flags — from PlanCommandOptions interface in plan-command.ts.
- * Source: claudekit-cli/src/commands/plan/plan-command.ts
+ * Source: hyprkit-cli/src/commands/plan/plan-command.ts
  */
 const VALID_FLAGS = new Set([
 	"json",
@@ -87,9 +87,10 @@ function resolveEngineerSourceRoot(): string {
 	if (existsSync(packageJsonPath)) {
 		try {
 			const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+				hyprkit?: { sourceDir?: string };
 				claudekit?: { sourceDir?: string };
 			};
-			const sourceDir = packageJson.claudekit?.sourceDir;
+			const sourceDir = packageJson.hyprkit?.sourceDir ?? packageJson.claudekit?.sourceDir;
 			if (sourceDir) {
 				const layoutAwareRoot = join(ENGINEER_REPO_ROOT, sourceDir);
 				if (existsSync(layoutAwareRoot)) {

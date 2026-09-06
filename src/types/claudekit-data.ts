@@ -1,5 +1,5 @@
 /**
- * ClaudeKit CLI data types for ~/.claudekit/ directory
+ * ClaudeKit CLI data types for ~/.hyprkit/ directory
  */
 import { z } from "zod";
 
@@ -25,7 +25,7 @@ export const RegisteredProjectSchema = z.object({
 
 export type RegisteredProject = z.infer<typeof RegisteredProjectSchema>;
 
-// Projects registry schema (~/.claudekit/projects.json)
+// Projects registry schema (~/.hyprkit/projects.json)
 export const ProjectsRegistrySchema = z.object({
 	version: z.number().int().positive(),
 	projects: z.array(RegisteredProjectSchema),

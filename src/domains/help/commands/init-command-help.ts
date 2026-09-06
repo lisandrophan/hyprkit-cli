@@ -58,7 +58,7 @@ export const initCommandHelp: CommandHelp = {
 				},
 				{
 					flags: "--kit <kit>",
-					description: "Kit to use (engineer, marketing)",
+					description: "Kit to use (hyprkit, engineer, marketing)",
 				},
 				{
 					flags: "-r, --release <version>",

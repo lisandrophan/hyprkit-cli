@@ -762,7 +762,7 @@ describe("update-cli", () => {
 			return {
 				currentVersion,
 				execAsyncFn: mock(async (command: string) => {
-					if (command.startsWith("npm install -g claudekit-cli@")) {
+					if (command.startsWith("npm install -g hyprkit-cli@")) {
 						return { stdout: "", stderr: "" };
 					}
 
@@ -780,7 +780,7 @@ describe("update-cli", () => {
 					getVersion: mock(async () => "10.9.0"),
 					getDisplayName: mock(() => "npm"),
 					getNpmRegistryUrl: mock(async () => null),
-					getUpdateCommand: mock((_pm, _pkg, version) => `npm install -g claudekit-cli@${version}`),
+					getUpdateCommand: mock((_pm, _pkg, version) => `npm install -g hyprkit-cli@${version}`),
 				},
 				npmRegistryClient: {
 					versionExists: mock(async () => true),
@@ -805,7 +805,7 @@ describe("update-cli", () => {
 			expect(deps.npmRegistryClient.getDevVersion).not.toHaveBeenCalled();
 			expect(deps.npmRegistryClient.getLatestVersion).toHaveBeenCalledTimes(1);
 			expect(deps.execAsyncFn).toHaveBeenCalledWith(
-				"npm install -g claudekit-cli@3.36.1",
+				"npm install -g hyprkit-cli@3.36.1",
 				expect.any(Object),
 			);
 			expect(deps.promptKitUpdateFn).toHaveBeenCalledWith(false, true);
@@ -823,7 +823,7 @@ describe("update-cli", () => {
 
 			expect(deps.npmRegistryClient.getDevVersion).toHaveBeenCalledTimes(1);
 			expect(deps.npmRegistryClient.getLatestVersion).not.toHaveBeenCalled();
-			expect(deps.execAsyncFn).toHaveBeenCalledWith("npm install -g claudekit-cli@3.36.0-dev.37", {
+			expect(deps.execAsyncFn).toHaveBeenCalledWith("npm install -g hyprkit-cli@3.36.0-dev.37", {
 				timeout: CLI_UPDATE_INSTALL_TIMEOUT_MS,
 			});
 			expect(deps.promptKitUpdateFn).toHaveBeenCalledWith(true, true);
@@ -842,7 +842,7 @@ describe("update-cli", () => {
 			expect(deps.npmRegistryClient.getDevVersion).toHaveBeenCalledTimes(1);
 			expect(deps.npmRegistryClient.getLatestVersion).toHaveBeenCalledTimes(1);
 			expect(deps.execAsyncFn).toHaveBeenCalledWith(
-				"npm install -g claudekit-cli@3.36.1",
+				"npm install -g hyprkit-cli@3.36.1",
 				expect.any(Object),
 			);
 			expect(deps.promptKitUpdateFn).toHaveBeenCalledWith(false, true);
@@ -852,7 +852,7 @@ describe("update-cli", () => {
 	describe("redactCommandForLog", () => {
 		it("redacts registry credentials in --registry argument", () => {
 			const command =
-				"npm install -g claudekit-cli@1.2.3 --registry https://user:pass@registry.example.com/npm";
+				"npm install -g hyprkit-cli@1.2.3 --registry https://user:pass@registry.example.com/npm";
 			const redacted = redactCommandForLog(command);
 
 			expect(redacted).not.toContain("user:pass");
@@ -861,7 +861,7 @@ describe("update-cli", () => {
 
 		it("supports --registry=<url> argument style", () => {
 			const command =
-				"npm install -g claudekit-cli@1.2.3 --registry=https://user:pass@registry.example.com/npm";
+				"npm install -g hyprkit-cli@1.2.3 --registry=https://user:pass@registry.example.com/npm";
 			const redacted = redactCommandForLog(command);
 
 			expect(redacted).not.toContain("user:pass");

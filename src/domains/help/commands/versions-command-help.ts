@@ -26,7 +26,7 @@ export const versionsCommandHelp: CommandHelp = {
 			options: [
 				{
 					flags: "--kit <kit>",
-					description: "Filter by specific kit (engineer, marketing)",
+					description: "Filter by specific kit (hyprkit, engineer, marketing)",
 				},
 				{
 					flags: "--limit <number>",

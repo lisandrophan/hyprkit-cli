@@ -1,6 +1,6 @@
 /**
  * Skill registry - tracks installed skills across agents
- * Central registry at ~/.claudekit/skill-registry.json
+ * Central registry at ~/.hyprkit/skill-registry.json
  */
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { AgentType } from "./types.js";
 
 const home = homedir();
-const REGISTRY_PATH = join(home, ".claudekit", "skill-registry.json");
+const REGISTRY_PATH = join(home, ".hyprkit", "skill-registry.json");
 
 // Schema for registry entries
 const SkillInstallationSchema = z.object({

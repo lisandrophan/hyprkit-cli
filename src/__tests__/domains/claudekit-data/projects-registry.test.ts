@@ -157,7 +157,7 @@ describe("ProjectsRegistryManager", () => {
 		ProjectsRegistryManager.clearCache();
 
 		// Create corrupted registry file
-		const registryDir = join(TEST_HOME, ".claudekit");
+		const registryDir = join(TEST_HOME, ".hyprkit");
 		const registryPath = join(registryDir, "projects.json");
 		await mkdir(registryDir, { recursive: true });
 		await writeFile(registryPath, "{ invalid json }}}");
@@ -183,7 +183,7 @@ describe("ProjectsRegistryManager", () => {
 			alias: `lock-${uniqueId}`,
 		});
 
-		const lockPath = join(TEST_HOME, ".claudekit", "projects.json.lock");
+		const lockPath = join(TEST_HOME, ".hyprkit", "projects.json.lock");
 
 		// Lock should be released after operation
 		expect(existsSync(lockPath)).toBe(false);

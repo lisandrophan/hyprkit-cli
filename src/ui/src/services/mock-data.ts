@@ -18,8 +18,8 @@ export const mockProjects: Project[] = [
 	},
 	{
 		id: "proj-2",
-		name: "claudekit-cli",
-		path: "/home/kai/claudekit/claudekit-cli",
+		name: "hyprkit-cli",
+		path: "/home/kai/claudekit/hyprkit-cli",
 		health: HealthStatus.WARNING,
 		kitType: KitType.ENGINEER,
 		model: "claude-sonnet-4",

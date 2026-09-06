@@ -1,6 +1,6 @@
 /**
  * Projects registry manager
- * Handles CRUD operations for ~/.claudekit/projects.json
+ * Handles CRUD operations for ~/.hyprkit/projects.json
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";

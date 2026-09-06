@@ -71,8 +71,8 @@ export const ContentConfigSchema = z.object({
 	/** How many days to look back on the very first scan (default 30) */
 	firstScanLookbackDays: z.number().min(1).max(365).default(30),
 	maxContentPerDay: z.number().default(10),
-	contentDir: z.string().default("~/.claudekit/content/"),
-	dbPath: z.string().default("~/.claudekit/content.db"),
+	contentDir: z.string().default("~/.hyprkit/content/"),
+	dbPath: z.string().default("~/.hyprkit/content.db"),
 });
 export type ContentConfig = z.infer<typeof ContentConfigSchema>;
 

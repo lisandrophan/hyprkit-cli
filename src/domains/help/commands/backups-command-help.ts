@@ -20,7 +20,7 @@ export const backupsCommandHelp: CommandHelp = {
 			options: [
 				{
 					flags: "list [--limit <n>] [--json]",
-					description: "List recovery backups under ~/.claudekit/backups/",
+					description: "List recovery backups under ~/.hyprkit/backups/",
 				},
 				{
 					flags: "restore <id> [--yes] [--json]",
@@ -46,7 +46,7 @@ export const backupsCommandHelp: CommandHelp = {
 	subcommands: [
 		{
 			name: "list",
-			description: "List recovery backups under ~/.claudekit/backups/",
+			description: "List recovery backups under ~/.hyprkit/backups/",
 			usage: "ck backups list [--limit <n>] [--json]",
 			examples: [],
 			optionGroups: [],

@@ -9,7 +9,7 @@ export function getBunQuery(): PmQuery {
 	return {
 		pm: "bun",
 		cmd: "bun pm ls -g",
-		checkFn: (stdout) => /(?:^|[^a-z0-9-])claudekit-cli@/m.test(stdout),
+		checkFn: (stdout) => /(?:^|[^a-z0-9-])hyprkit-cli@/m.test(stdout),
 	};
 }
 

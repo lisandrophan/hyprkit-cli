@@ -37,7 +37,7 @@ describe("sqlite-client optional driver loading", () => {
 			expect(error).toBeInstanceOf(OptionalSqliteDriverError);
 			const message = error instanceof Error ? error.message : String(error);
 			expect(message).toContain("`ck content` requires the optional native package");
-			expect(message).toContain("npm install -g claudekit-cli --include=optional");
+			expect(message).toContain("npm install -g hyprkit-cli --include=optional");
 			expect(message).toContain("Most ClaudeKit CLI commands do not need it");
 			expect(message).toContain("Cannot find module 'better-sqlite3'");
 		}

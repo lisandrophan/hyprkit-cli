@@ -1,7 +1,7 @@
 /**
  * Help System Type Definitions
  *
- * Foundation types for claudekit-cli custom help system.
+ * Foundation types for hyprkit-cli custom help system.
  * Used by help-colors.ts, help-renderer.ts, help-commands.ts, and help-interactive.ts.
  */
 

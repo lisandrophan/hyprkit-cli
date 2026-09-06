@@ -6,7 +6,7 @@
  * default 3456-3460 range.
  *
  * Each spec uses Playwright route mocking to intercept /api/migrate/* calls
- * — no real ~/.claudekit or provider directories are read or written.
+ * — no real ~/.hyprkit or provider directories are read or written.
  *
  * CI wiring is out of scope for this phase (decisions Q7).
  * Run locally: bun run test:e2e

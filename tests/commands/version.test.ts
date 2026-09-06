@@ -291,9 +291,10 @@ describe("Version Command", () => {
 	describe("Integration Scenarios", () => {
 		test("should handle both kits in parallel", () => {
 			const kits = Object.keys(AVAILABLE_KITS);
+			expect(kits).toContain("hyprkit");
 			expect(kits).toContain("engineer");
 			expect(kits).toContain("marketing");
-			expect(kits).toHaveLength(2);
+			expect(kits).toHaveLength(3);
 		});
 
 		test("should support filtering by engineer kit", () => {

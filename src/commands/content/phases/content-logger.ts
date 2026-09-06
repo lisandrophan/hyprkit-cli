@@ -1,6 +1,6 @@
 /**
  * Daily-rotating file logger for the content daemon.
- * Writes to ~/.claudekit/logs/content-YYYYMMDD.log and also
+ * Writes to ~/.hyprkit/logs/content-YYYYMMDD.log and also
  * echoes through the shared logger singleton for console output.
  */
 
@@ -17,7 +17,7 @@ export class ContentLogger {
 	private maxBytes: number;
 
 	constructor(maxBytes = 0) {
-		this.logDir = join(homedir(), ".claudekit", "logs");
+		this.logDir = join(homedir(), ".hyprkit", "logs");
 		this.maxBytes = maxBytes;
 	}
 

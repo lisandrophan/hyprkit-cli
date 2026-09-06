@@ -14,7 +14,7 @@ describe("update-cli windows integration behavior", () => {
 	it("throws mismatch error with Windows `where ck` guidance when active version remains old", async () => {
 		const execAsyncFn = mock(
 			async (command: string): Promise<{ stdout: string; stderr: string }> => {
-				if (command.startsWith("npm install -g claudekit-cli@")) {
+				if (command.startsWith("npm install -g hyprkit-cli@")) {
 					return { stdout: "", stderr: "" };
 				}
 
@@ -39,7 +39,7 @@ describe("update-cli windows integration behavior", () => {
 				getVersion: mock(async () => "10.9.0"),
 				getDisplayName: mock(() => "npm"),
 				getNpmRegistryUrl: mock(async () => null),
-				getUpdateCommand: mock(() => "npm install -g claudekit-cli@3.34.5"),
+				getUpdateCommand: mock(() => "npm install -g hyprkit-cli@3.34.5"),
 			},
 			npmRegistryClient: {
 				versionExists: mock(async () => true),
@@ -75,7 +75,7 @@ describe("update-cli windows integration behavior", () => {
 		expect(message).toContain("Windows: where ck");
 
 		expect(execAsyncFn).toHaveBeenCalledWith(
-			"npm install -g claudekit-cli@3.34.5",
+			"npm install -g hyprkit-cli@3.34.5",
 			expect.any(Object),
 		);
 		expect(execAsyncFn).toHaveBeenCalledWith("ck --version", expect.any(Object));

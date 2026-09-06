@@ -39,7 +39,7 @@ describe("destructive operation backup", () => {
 			scope: "claude",
 		});
 
-		expect(backup.backupDir).toStartWith(join(testPaths.testHome, ".claudekit", "backups"));
+		expect(backup.backupDir).toStartWith(join(testPaths.testHome, ".hyprkit", "backups"));
 		expect(backup.manifest.operation).toBe("fresh-install");
 		expect(backup.manifest.items.map((item) => item.path).sort()).toEqual([
 			"commands/test.md",
@@ -92,7 +92,7 @@ describe("destructive operation backup", () => {
 	});
 
 	test("rejects malformed manifests when loading a backup", async () => {
-		const backupDir = join(testPaths.testHome, ".claudekit", "backups", "manual-invalid");
+		const backupDir = join(testPaths.testHome, ".hyprkit", "backups", "manual-invalid");
 		await mkdir(backupDir, { recursive: true });
 		await writeFile(
 			join(backupDir, "manifest.json"),
@@ -112,7 +112,7 @@ describe("destructive operation backup", () => {
 	});
 
 	test("rejects relative sourceRoot values when loading a backup", async () => {
-		const backupDir = join(testPaths.testHome, ".claudekit", "backups", "manual-relative-root");
+		const backupDir = join(testPaths.testHome, ".hyprkit", "backups", "manual-relative-root");
 		await mkdir(backupDir, { recursive: true });
 		await writeFile(
 			join(backupDir, "manifest.json"),
@@ -212,7 +212,7 @@ describe("destructive operation backup", () => {
 		await writeFile(join(testPaths.testHome, "outside.md"), "outside");
 		await symlink(join(testPaths.testHome, "outside.md"), join(sourceRoot, "commands", "link.md"));
 
-		const backupRoot = join(testPaths.testHome, ".claudekit", "backups");
+		const backupRoot = join(testPaths.testHome, ".hyprkit", "backups");
 		const before = existsSync(backupRoot) ? readdirSync(backupRoot).length : 0;
 
 		await expect(
@@ -268,8 +268,8 @@ describe("destructive operation backup", () => {
 			}),
 		);
 
-		await mkdir(join(testPaths.testHome, ".claudekit", "backups"), { recursive: true });
-		const symlinkDir = join(testPaths.testHome, ".claudekit", "backups", "linked-outside");
+		await mkdir(join(testPaths.testHome, ".hyprkit", "backups"), { recursive: true });
+		const symlinkDir = join(testPaths.testHome, ".hyprkit", "backups", "linked-outside");
 		await symlink(outsideDir, symlinkDir);
 
 		await expect(loadDestructiveOperationBackup(symlinkDir)).rejects.toThrow(

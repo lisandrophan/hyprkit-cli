@@ -48,7 +48,7 @@ export class FileWatcher {
 		const paths: string[] = [];
 
 		// Global config
-		const globalDir = join(homedir(), ".claudekit");
+		const globalDir = join(homedir(), ".hyprkit");
 		paths.push(join(globalDir, "config.json"));
 
 		// Global kit config
@@ -124,7 +124,7 @@ export class FileWatcher {
 	}
 
 	private getConfigScope(path: string): "global" | "local" {
-		const globalDir = join(homedir(), ".claudekit");
+		const globalDir = join(homedir(), ".hyprkit");
 		const globalKitDir = join(homedir(), ".claude");
 		return path.startsWith(globalDir) || path.startsWith(globalKitDir) ? "global" : "local";
 	}

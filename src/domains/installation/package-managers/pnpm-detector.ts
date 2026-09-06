@@ -9,8 +9,8 @@ import { execAsync, isValidPackageName, isValidVersion } from "./detector-base.j
 export function getPnpmQuery(): PmQuery {
 	return {
 		pm: "pnpm",
-		cmd: isWindows() ? "pnpm.cmd ls -g claudekit-cli" : "pnpm ls -g claudekit-cli",
-		checkFn: (stdout) => /(?:^|[^a-z0-9-])claudekit-cli(?:@|\s+\d)/m.test(stdout),
+		cmd: isWindows() ? "pnpm.cmd ls -g hyprkit-cli" : "pnpm ls -g hyprkit-cli",
+		checkFn: (stdout) => /(?:^|[^a-z0-9-])hyprkit-cli(?:@|\s+\d)/m.test(stdout),
 	};
 }
 

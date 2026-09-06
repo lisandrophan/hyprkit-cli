@@ -1,6 +1,6 @@
 /**
  * Watch logger — structured file logging for overnight debugging
- * Writes timestamped entries to ~/.claudekit/logs/watch-YYYYMMDD.log
+ * Writes timestamped entries to ~/.hyprkit/logs/watch-YYYYMMDD.log
  * Also pipes to console via existing logger singleton
  */
 

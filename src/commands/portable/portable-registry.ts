@@ -1,7 +1,7 @@
 /**
  * Portable registry — unified tracking of installed agents, commands, and skills
  * Extends skill-registry.json to portable-registry.json with backward compatibility.
- * Central registry at ~/.claudekit/portable-registry.json
+ * Central registry at ~/.hyprkit/portable-registry.json
  */
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";

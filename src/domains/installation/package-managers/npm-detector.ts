@@ -17,9 +17,9 @@ export function getNpmQuery(): PmQuery {
 			try {
 				const data = JSON.parse(stdout);
 				// npm ls -g --json returns dependencies object with package name as key
-				return !!data.dependencies?.["claudekit-cli"];
+				return !!data.dependencies?.["hyprkit-cli"];
 			} catch {
-				return /"claudekit-cli"\s*:/.test(stdout) || /(?:^|[^a-z0-9-])claudekit-cli@/m.test(stdout);
+				return /"hyprkit-cli"\s*:/.test(stdout) || /(?:^|[^a-z0-9-])hyprkit-cli@/m.test(stdout);
 			}
 		},
 	};

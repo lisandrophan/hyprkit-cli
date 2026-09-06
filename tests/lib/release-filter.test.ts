@@ -314,7 +314,7 @@ describe("ReleaseFilter", () => {
 	 * GitHub API uses lexicographic sorting for same-day releases,
 	 * causing "beta.10" to appear before "beta.4" in results.
 	 *
-	 * @see https://github.com/mrgoonie/claudekit-cli/issues/256
+	 * @see https://github.com/mrgoonie/hyprkit-cli/issues/256
 	 */
 	describe("getLatestStable", () => {
 		it("should return highest semver stable release", () => {

@@ -51,7 +51,7 @@ export const configCommandHelp: CommandHelp = {
 			options: [
 				{
 					flags: "-g, --global",
-					description: "Use global config (~/.claudekit/config.json)",
+					description: "Use global config (~/.hyprkit/config.json)",
 				},
 				{
 					flags: "-l, --local",

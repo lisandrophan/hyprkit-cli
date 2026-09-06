@@ -15,7 +15,7 @@ import type { SkillInfo } from "../types.js";
 
 describe("skill-installer", () => {
 	const home = homedir();
-	const testDir = join(home, ".claudekit", "installer-test");
+	const testDir = join(home, ".hyprkit", "installer-test");
 	const testSkillPath = join(testDir, "test-skill");
 	const installBase = join(home, ".claude/skills");
 

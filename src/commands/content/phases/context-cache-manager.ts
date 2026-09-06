@@ -1,6 +1,6 @@
 /**
  * Cache manager for project documentation context.
- * Stores Claude-generated summaries in ~/.claudekit/cache/ with 24h TTL.
+ * Stores Claude-generated summaries in ~/.hyprkit/cache/ with 24h TTL.
  * Cache is invalidated when source doc files change (mtime-based hash).
  */
 
@@ -27,7 +27,7 @@ export interface ContextCache {
 // Constants
 // ---------------------------------------------------------------------------
 
-const CACHE_DIR = join(homedir(), ".claudekit", "cache");
+const CACHE_DIR = join(homedir(), ".hyprkit", "cache");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ export function getDocSourcePaths(repoPath: string): string[] {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Build cache file path from repo name + path hash, stored in ~/.claudekit/cache/. */
+/** Build cache file path from repo name + path hash, stored in ~/.hyprkit/cache/. */
 function getCacheFilePath(repoPath: string): string {
 	const repoName = basename(repoPath).replace(/[^a-zA-Z0-9_-]/g, "_");
 	// Include path hash to avoid collisions between repos with the same directory name

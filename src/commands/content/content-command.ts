@@ -29,7 +29,7 @@ import type { Database } from "./phases/sqlite-client.js";
 import { loadContentConfig, loadContentState, saveContentState } from "./phases/state-manager.js";
 import type { ContentCommandOptions, ContentConfig, ContentState } from "./types.js";
 
-const LOCK_DIR = join(homedir(), ".claudekit", "locks");
+const LOCK_DIR = join(homedir(), ".hyprkit", "locks");
 const LOCK_FILE = join(LOCK_DIR, "ck-content.lock");
 
 /** Max times a failed content creation is retried before giving up */
