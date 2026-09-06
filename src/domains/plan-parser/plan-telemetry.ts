@@ -1,7 +1,8 @@
+import { readPrefixedEnv } from "@/shared/environment.js";
 /**
  * Plan Telemetry Stub
  * Future: Send anonymous usage analytics to ClaudeKit backend
- * Current: No-op, debug logging only when CK_TELEMETRY=1
+ * Current: No-op, debug logging only when HK_TELEMETRY=1
  */
 
 export interface PlanEvent {
@@ -19,7 +20,7 @@ export interface PlanEvent {
 export function trackPlanEvent(event: PlanEvent): void {
 	try {
 		// Debug mode: log to stderr when enabled so JSON stdout output stays valid.
-		if (process.env.CK_TELEMETRY === "1") {
+		if (readPrefixedEnv("TELEMETRY") === "1") {
 			process.stderr.write(`[telemetry] ${JSON.stringify(event)}\n`);
 		}
 

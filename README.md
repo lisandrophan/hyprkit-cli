@@ -63,11 +63,16 @@ bun run build
 Testing an install without touching your real `~/.claude`:
 
 ```bash
-export CK_TEST_HOME=/tmp/hk-test
+export HK_TEST_HOME=/tmp/hk-test
 hk init --kit hyprkit --dir /tmp/some-project -y
 ```
 
-`CK_TEST_HOME` redirects both `~/.claude` and `~/.hyprkit`.
+`HK_TEST_HOME` redirects both `~/.claude` and `~/.hyprkit`.
+
+`HK_TELEMETRY` and `HYPRKIT_VERBOSE` work the same way. Their upstream `CK_` /
+`CLAUDEKIT_` spellings are still accepted. Every other environment variable keeps
+its upstream name — they are cache TTLs, timeouts and internal stubs that nobody
+sets by hand, and renaming them would conflict on each upstream merge.
 
 ### Staying close to upstream
 

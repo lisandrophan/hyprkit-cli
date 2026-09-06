@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join, normalize, resolve } from "node:path";
+import { readPrefixedEnv } from "@/shared/environment.js";
 
 /**
  * Safely retrieve environment variable with validation
@@ -67,7 +68,7 @@ export class PathResolver {
 	 * @internal Used by tests to inject isolated directories
 	 */
 	private static getTestHomeDir(): string | undefined {
-		return process.env.CK_TEST_HOME;
+		return readPrefixedEnv("TEST_HOME");
 	}
 
 	/**
@@ -234,7 +235,7 @@ export class PathResolver {
 	 * @returns Global kit installation directory path
 	 *
 	 * Resolution order:
-	 * 1. CK_TEST_HOME (test isolation)
+	 * 1. HK_TEST_HOME (test isolation)
 	 * 2. CLAUDE_CONFIG_DIR (multi-profile support, e.g. ~/.claude-personal)
 	 * 3. ~/.claude/ (default on all platforms)
 	 */

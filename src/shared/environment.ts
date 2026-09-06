@@ -40,13 +40,28 @@ export function isCIEnvironment(): boolean {
 }
 
 /**
- * Check if tests are running with an isolated home directory (CK_TEST_HOME).
- * CK_TEST_HOME is a path to a temp directory — any non-empty, non-falsy value
+ * Read an environment variable under this fork's `HK_` prefix, falling back to
+ * upstream's `CK_` name.
+ *
+ * Only the handful of variables a person might actually type are wired through
+ * here. The rest — cache TTLs, timeouts, internal stubs — keep their upstream
+ * names, because renaming them would conflict on every upstream merge and nobody
+ * sets them by hand.
+ *
+ * @param suffix - Variable name without the prefix, e.g. "TEST_HOME"
+ */
+export function readPrefixedEnv(suffix: string): string | undefined {
+	return process.env[`HK_${suffix}`] ?? process.env[`CK_${suffix}`];
+}
+
+/**
+ * Check if tests are running with an isolated home directory (HK_TEST_HOME).
+ * HK_TEST_HOME is a path to a temp directory — any non-empty, non-falsy value
  * (e.g. "/tmp/ck-test-home") means tests have their own isolated config space,
  * so expensive operations (npm queries, network checks) can safely run.
  */
 function isIsolatedTestEnvironment(): boolean {
-	const normalizedValue = normalizeEnvValue(process.env.CK_TEST_HOME);
+	const normalizedValue = normalizeEnvValue(readPrefixedEnv("TEST_HOME"));
 	if (!normalizedValue) {
 		return false;
 	}
@@ -55,7 +70,7 @@ function isIsolatedTestEnvironment(): boolean {
 
 /**
  * Check if expensive operations should be skipped.
- * Skip in CI unless tests have an isolated home (CK_TEST_HOME) —
+ * Skip in CI unless tests have an isolated home (HK_TEST_HOME) —
  * isolated tests need real npm/network checks to verify integration behavior.
  */
 export function shouldSkipExpensiveOperations(): boolean {

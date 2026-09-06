@@ -68,8 +68,10 @@ const parsed = cli.parse(process.argv, { run: false });
 		}
 
 		// Check environment variable
-		const envVerbose =
-			process.env.CLAUDEKIT_VERBOSE === "1" || process.env.CLAUDEKIT_VERBOSE === "true";
+		const envVerbose = (() => {
+			const verbose = process.env.HYPRKIT_VERBOSE ?? process.env.CLAUDEKIT_VERBOSE;
+			return verbose === "1" || verbose === "true";
+		})();
 
 		// Enable verbose if flag or env var is set
 		const isVerbose = parsed.options.verbose || envVerbose;

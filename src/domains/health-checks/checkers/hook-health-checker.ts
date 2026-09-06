@@ -7,6 +7,7 @@ import { type SettingsJson, SettingsMerger } from "@/domains/config/settings-mer
 import { isLegacyDescriptiveNamePrompt } from "@/domains/installation/merger/zombie-wirings-pruner.js";
 import { CLAUDEKIT_CLI_NPM_PACKAGE_NAME } from "@/shared/claudekit-constants.js";
 import { repairClaudeHookCommandPath } from "@/shared/command-normalizer.js";
+import { readPrefixedEnv } from "@/shared/environment.js";
 import { resolveKitConfigPath } from "@/shared/kit-config-files.js";
 import { logger } from "@/shared/logger.js";
 import { PathResolver } from "@/shared/path-resolver.js";
@@ -110,7 +111,7 @@ function getCanonicalGlobalCommandRoot(): string {
 
 function getClaudeSettingsFiles(projectDir: string): ClaudeSettingsFile[] {
 	const globalClaudeDir = PathResolver.getGlobalKitDir();
-	const ccsSettingsDir = join(process.env.CK_TEST_HOME ?? homedir(), ".ccs");
+	const ccsSettingsDir = join(readPrefixedEnv("TEST_HOME") ?? homedir(), ".ccs");
 	const candidates: ClaudeSettingsFile[] = [
 		{
 			path: resolve(projectDir, ".claude", "settings.json"),
@@ -1585,7 +1586,7 @@ export async function checkHookLogs(projectDir: string): Promise<CheckResult> {
  */
 export async function checkCliVersion(): Promise<CheckResult> {
 	try {
-		if (process.env.NODE_ENV === "test" || process.env.CK_TEST_HOME) {
+		if (process.env.NODE_ENV === "test" || readPrefixedEnv("TEST_HOME")) {
 			logger.verbose("ClaudekitChecker: Skipping CLI version check in test mode");
 			return {
 				id: "cli-version",
