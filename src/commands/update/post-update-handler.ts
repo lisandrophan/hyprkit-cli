@@ -22,6 +22,7 @@ import { versionsMatch } from "@/domains/versioning/checking/version-utils.js";
 import { getClaudeKitSetup } from "@/services/file-operations/claudekit-scanner.js";
 import { normalizeCommand } from "@/shared/command-normalizer.js";
 import { parseJsonContent } from "@/shared/json-content.js";
+import { resolveKitConfigPath } from "@/shared/kit-config-files.js";
 import { logger } from "@/shared/logger.js";
 import { confirm, isCancel, log, spinner } from "@/shared/safe-prompts.js";
 import { AVAILABLE_KITS, type KitType, type Metadata, MetadataSchema } from "@/types";
@@ -188,7 +189,7 @@ async function readManagedHookNames(claudeDir: string): Promise<string[]> {
 
 /** Hook names the user explicitly disabled in .ck.json (the only removal channel). */
 async function readDisabledHookNames(claudeDir: string): Promise<Set<string>> {
-	const configPath = join(claudeDir, ".ck.json");
+	const configPath = resolveKitConfigPath(claudeDir);
 	if (!existsSync(configPath)) return new Set();
 	try {
 		const config = parseJsonContent<CkConfigSnapshot>(await readFile(configPath, "utf-8"));

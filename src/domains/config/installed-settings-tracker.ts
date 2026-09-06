@@ -9,9 +9,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { logger, normalizeCommand } from "@/shared";
 import { parseJsonContent } from "@/shared/json-content.js";
+import { resolveKitConfigPath } from "@/shared/kit-config-files.js";
 import type { InstalledSettings } from "@/types";
-
-const CK_JSON_FILE = ".ck.json";
 
 interface CkJsonData {
 	kits?: Record<string, { installedSettings?: InstalledSettings; [key: string]: unknown }>;
@@ -30,15 +29,20 @@ export class InstalledSettingsTracker {
 	}
 
 	/**
-	 * Get path to .ck.json based on scope
+	 * Get path to the kit config file based on scope.
+	 *
+	 * This tracker both reads and writes, so it follows whichever filename already
+	 * exists and only creates `KIT_CONFIG_FILE` when neither is present — otherwise
+	 * an engineer-kit project would end up with its tracked settings split across
+	 * two files.
 	 */
 	private getCkJsonPath(): string {
 		if (this.isGlobal) {
-			// Global: ~/.claude/.ck.json
-			return join(this.projectDir, CK_JSON_FILE);
+			// Global: ~/.claude/<kit config>
+			return resolveKitConfigPath(this.projectDir);
 		}
-		// Local: ./.claude/.ck.json
-		return join(this.projectDir, ".claude", CK_JSON_FILE);
+		// Local: ./.claude/<kit config>
+		return resolveKitConfigPath(join(this.projectDir, ".claude"));
 	}
 
 	/**

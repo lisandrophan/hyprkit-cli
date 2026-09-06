@@ -28,10 +28,15 @@ Deliberately **not** changed: the ClaudeKit name in user-facing output, comments
 the config dashboard. Renaming ~900 strings across 269 files would turn every upstream
 merge into a conflict, for no functional gain.
 
-## Known divergence from the hyprkit kit
+## Kit config filenames
 
-The CLI reads and writes `.ck.json` / `.ckignore` as the kit's config files. The
-hyprkit kit uses `.hk.json` / `.hkignore`. Installation is unaffected — the lookup is
-wrapped in try/catch and degrades to "no preferences" — but `hk config` and
-`hk doctor` operate on `.ck.json`, which the kit's own hooks ignore. Do not use the
-config dashboard against a hyprkit project until this is reconciled.
+The hyprkit kit stores its config as `.hk.json` and its scout ignore list as
+`.hkignore`; the engineer and marketing kits use `.ck.json` / `.ckignore`. This fork
+handles both through `src/shared/kit-config-files.ts`:
+
+- **Reads** accept either name, preferring `.hk.json`.
+- **Writes** follow whichever file already exists, and create `.hk.json` when neither
+  does — so an engineer-kit project keeps a single config file rather than ending up
+  with its settings split across two.
+- Watchers, never-copy lists, legacy-repair markers and portable-config discovery
+  consider both names.

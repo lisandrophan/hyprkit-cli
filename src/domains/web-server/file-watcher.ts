@@ -3,8 +3,9 @@
  */
 
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { CkConfigManager } from "@/domains/config/index.js";
+import { isKitConfigFile, kitConfigPaths } from "@/shared/kit-config-files.js";
 import { logger } from "@/shared/logger.js";
 import chokidar, { type FSWatcher } from "chokidar";
 import type { WebSocketManager } from "./websocket-manager.js";
@@ -53,13 +54,13 @@ export class FileWatcher {
 
 		// Global kit config
 		const globalKitDir = join(homedir(), ".claude");
-		paths.push(join(globalKitDir, ".ck.json"));
+		paths.push(...kitConfigPaths(globalKitDir));
 		paths.push(join(globalKitDir, "settings.json"));
 		paths.push(join(globalKitDir, "settings.local.json"));
 
 		// Local project config
 		const cwd = process.cwd();
-		paths.push(join(cwd, ".claude", ".ck.json"));
+		paths.push(...kitConfigPaths(join(cwd, ".claude")));
 		paths.push(join(cwd, ".claude", "settings.json"));
 		paths.push(join(cwd, ".claude", "settings.local.json"));
 
@@ -117,7 +118,7 @@ export class FileWatcher {
 	private isConfigFile(path: string): boolean {
 		return (
 			path.endsWith("config.json") ||
-			path.endsWith(".ck.json") ||
+			isKitConfigFile(basename(path)) ||
 			path.endsWith("settings.json") ||
 			path.endsWith("settings.local.json")
 		);

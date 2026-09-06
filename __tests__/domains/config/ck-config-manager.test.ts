@@ -238,7 +238,8 @@ describe("CkConfigManager", () => {
 		it("should load global config path correctly", () => {
 			const globalPath = CkConfigManager.getGlobalConfigPath();
 			expect(globalPath).toContain(".claude");
-			expect(globalPath).toContain(".ck.json");
+			// Defaults to the current kit config name; an existing .ck.json wins.
+			expect(globalPath).toContain(".hk.json");
 			expect(globalPath).toContain(homedir());
 		});
 
@@ -246,7 +247,7 @@ describe("CkConfigManager", () => {
 			const projectDir = join(tmpdir(), "myproject");
 			const projectPath = CkConfigManager.getProjectConfigPath(projectDir);
 			expect(projectPath).toContain(".claude");
-			expect(projectPath).toContain(".ck.json");
+			expect(projectPath).toContain(".hk.json");
 			expect(projectPath).toContain("myproject");
 		});
 

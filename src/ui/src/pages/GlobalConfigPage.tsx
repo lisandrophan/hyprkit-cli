@@ -1,6 +1,6 @@
 /**
  * Global config editor page - unified 3-column layout: Form | JSON | Help
- * Edits ~/.claude/.ck.json with bidirectional sync between form and JSON
+ * Edits ~/.claude/.hk.json with bidirectional sync between form and JSON
  */
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -431,7 +431,7 @@ const GlobalConfigPage: React.FC = () => {
 		<div className="animate-in fade-in duration-300 w-full h-full flex flex-col transition-colors">
 			<ConfigEditorHeader
 				title={t("globalConfig")}
-				filePath="~/.claude/.ck.json"
+				filePath="~/.claude/.hk.json"
 				onBack={() => navigate(-1)}
 				onSave={editor.handleSave}
 				onReset={editor.handleReset}
@@ -504,7 +504,7 @@ const GlobalConfigPage: React.FC = () => {
 						syntaxError={editor.syntaxError}
 						onChange={editor.handleJsonChange}
 						onCursorLineChange={editor.setCursorLine}
-						headerPath="~/.claude/.ck.json"
+						headerPath="~/.claude/.hk.json"
 						headerActions={configJsonHeaderActions}
 					/>
 

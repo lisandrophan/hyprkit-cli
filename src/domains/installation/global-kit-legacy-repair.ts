@@ -5,6 +5,7 @@ import { pathExists } from "fs-extra";
 
 const LEGACY_KIT_MARKERS = [
 	"metadata.json",
+	".hk.json",
 	".ck.json",
 	"settings.json",
 	"settings.local.json",

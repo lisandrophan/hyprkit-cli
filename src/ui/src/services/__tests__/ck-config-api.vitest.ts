@@ -21,7 +21,7 @@ describe("ck-config-api web mode", () => {
 			json: async () => ({
 				config: { privacyBlock: false },
 				sources: { privacyBlock: "global" },
-				globalPath: "/Users/test/.claude/.ck.json",
+				globalPath: "/Users/test/.claude/.hk.json",
 				projectPath: null,
 			}),
 		});
@@ -39,15 +39,15 @@ describe("ck-config-api web mode", () => {
 			json: async () => ({
 				config: { privacyBlock: true },
 				sources: { privacyBlock: "project" },
-				globalPath: "/Users/test/.claude/.ck.json",
-				projectPath: "/tmp/proj/.claude/.ck.json",
+				globalPath: "/Users/test/.claude/.hk.json",
+				projectPath: "/tmp/proj/.claude/.hk.json",
 			}),
 		});
 
 		const result = await fetchCkConfig("project-alpha");
 
 		expect(fetchMock).toHaveBeenCalledWith("/api/ck-config?projectId=project-alpha");
-		expect(result.projectPath).toBe("/tmp/proj/.claude/.ck.json");
+		expect(result.projectPath).toBe("/tmp/proj/.claude/.hk.json");
 	});
 
 	it("fetchCkConfig throws on non-ok response", async () => {
@@ -62,7 +62,7 @@ describe("ck-config-api web mode", () => {
 			json: async () => ({
 				config: {},
 				sources: {},
-				globalPath: "/Users/test/.claude/.ck.json",
+				globalPath: "/Users/test/.claude/.hk.json",
 				projectPath: null,
 			}),
 		});
@@ -79,7 +79,7 @@ describe("ck-config-api web mode", () => {
 				config: {},
 				sources: {},
 				globalPath: "",
-				projectPath: "/tmp/proj/.claude/.ck.json",
+				projectPath: "/tmp/proj/.claude/.hk.json",
 			}),
 		});
 
@@ -93,7 +93,7 @@ describe("ck-config-api web mode", () => {
 			ok: true,
 			json: async () => ({
 				success: true,
-				path: "/Users/test/.claude/.ck.json",
+				path: "/Users/test/.claude/.hk.json",
 				scope: "global",
 				config: { privacyBlock: false },
 			}),

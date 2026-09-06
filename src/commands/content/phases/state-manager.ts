@@ -7,6 +7,7 @@
 
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { KIT_CONFIG_FILE } from "@/shared/kit-config-files.js";
 import {
 	type ContentConfig,
 	ContentConfigSchema,
@@ -14,7 +15,7 @@ import {
 	ContentStateSchema,
 } from "../types.js";
 
-const CK_CONFIG_FILE = ".ck.json";
+const CK_CONFIG_FILE = KIT_CONFIG_FILE;
 
 // ---------------------------------------------------------------------------
 // Config

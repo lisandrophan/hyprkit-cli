@@ -8,7 +8,7 @@ import {
 /**
  * StatuslineBuilderPage — visual drag-and-drop builder for Claude Code status-line.
  * URL: /statusline
- * Loads/saves statuslineLayout within .ck.json via existing /api/ck-config endpoint.
+ * Loads/saves statuslineLayout within .hk.json via existing /api/ck-config endpoint.
  * Uses lines-based layout model: lines: string[][], sectionConfig: Record<string, SectionConfig>
  */
 import type React from "react";

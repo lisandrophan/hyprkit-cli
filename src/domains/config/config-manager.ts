@@ -2,8 +2,13 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { chmod } from "node:fs/promises";
 import { platform } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { parseJsonContent } from "@/shared/json-content.js";
+import {
+	KIT_CONFIG_FILE,
+	findKitConfigPath,
+	resolveKitConfigPath,
+} from "@/shared/kit-config-files.js";
 import { logger } from "@/shared/logger.js";
 import { PathResolver } from "@/shared/path-resolver.js";
 import {
@@ -15,7 +20,8 @@ import {
 } from "@/types";
 
 // Project-level config file name
-const PROJECT_CONFIG_FILE = ".ck.json";
+// Reads accept either name; writes and migrations use KIT_CONFIG_FILE.
+const PROJECT_CONFIG_FILE = KIT_CONFIG_FILE;
 
 export class ConfigManager {
 	private static config: Config | null = null;
@@ -146,7 +152,7 @@ export class ConfigManager {
 		global = false,
 	): Promise<FoldersConfig | null> {
 		const configDir = ConfigManager.getProjectConfigDir(projectDir, global);
-		const configPath = join(configDir, PROJECT_CONFIG_FILE);
+		const configPath = resolveKitConfigPath(configDir);
 		try {
 			if (existsSync(configPath)) {
 				const content = await readFile(configPath, "utf-8");
@@ -180,7 +186,7 @@ export class ConfigManager {
 		global = false,
 	): Promise<void> {
 		const configDir = ConfigManager.getProjectConfigDir(projectDir, global);
-		const configPath = join(configDir, PROJECT_CONFIG_FILE);
+		const configPath = resolveKitConfigPath(configDir);
 		try {
 			// Ensure config directory exists
 			if (!existsSync(configDir)) {
@@ -273,7 +279,7 @@ export class ConfigManager {
 	 */
 	static projectConfigExists(projectDir: string, global = false): boolean {
 		const configDir = ConfigManager.getProjectConfigDir(projectDir, global);
-		return existsSync(join(configDir, PROJECT_CONFIG_FILE));
+		return findKitConfigPath(configDir) !== null;
 	}
 
 	/**
@@ -285,21 +291,24 @@ export class ConfigManager {
 	 * @returns true if migration was performed, false otherwise
 	 */
 	static async migrateNestedConfig(globalDir: string): Promise<boolean> {
-		const correctPath = join(globalDir, PROJECT_CONFIG_FILE);
-		const incorrectPath = join(globalDir, ".claude", PROJECT_CONFIG_FILE);
-
-		// If correct config already exists, don't migrate (preserve user's config)
-		if (existsSync(correctPath)) {
+		// A misplaced config may carry either kit's filename; move it under the same
+		// name it already has rather than silently renaming the user's file.
+		if (findKitConfigPath(globalDir) !== null) {
 			logger.debug("Config already exists at correct location, skipping migration");
 			return false;
 		}
 
-		// If incorrect nested config exists, migrate it
-		if (existsSync(incorrectPath)) {
+		const incorrectPath = findKitConfigPath(join(globalDir, ".claude"));
+		const correctPath = incorrectPath
+			? join(globalDir, basename(incorrectPath))
+			: join(globalDir, PROJECT_CONFIG_FILE);
+
+		if (incorrectPath) {
 			try {
-				logger.info("Migrating .ck.json from nested location to correct location...");
+				const movedName = basename(correctPath);
+				logger.info(`Migrating ${movedName} from nested location to correct location...`);
 				await rename(incorrectPath, correctPath);
-				logger.success(`Migrated ${PROJECT_CONFIG_FILE} to ${correctPath}`);
+				logger.success(`Migrated ${movedName} to ${correctPath}`);
 
 				// Clean up empty .claude directory if it's now empty
 				const nestedClaudeDir = join(globalDir, ".claude");

@@ -8,7 +8,7 @@ export const useFieldAtLine = (json: string, currentLine: number) => {
 		const stack: string[] = [];
 		let foundPath: string | null = null;
 
-		// Simple heuristic-based JSON path extractor for standard .ck.json formatting
+		// Simple heuristic-based JSON path extractor for standard .hk.json formatting
 		for (let i = 0; i <= Math.min(currentLine, lines.length - 1); i++) {
 			const line = lines[i].trim();
 

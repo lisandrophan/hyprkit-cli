@@ -8,6 +8,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseJsonContent } from "@/shared/json-content.js";
+import { findKitConfigPath, resolveKitConfigPath } from "@/shared/kit-config-files.js";
 import { logger } from "@/shared/logger.js";
 import {
 	type CkConfig,
@@ -17,8 +18,6 @@ import {
 	DEFAULT_CK_CONFIG,
 	normalizeCkConfigInput,
 } from "@/types";
-
-const CK_CONFIG_FILE = ".ck.json";
 
 /**
  * Get nested value from object using dot-notation path
@@ -122,10 +121,13 @@ export class CkConfigManager {
 	}
 
 	/**
-	 * Get the global config file path (~/.claude/.ck.json)
+	 * Get the global config file path (~/.claude/.hk.json).
+	 *
+	 * Resolves to whichever kit config file already exists, so an engineer-kit
+	 * install keeps using its `.ck.json`; only a fresh install gets `.hk.json`.
 	 */
 	static getGlobalConfigPath(): string {
-		return join(CkConfigManager.getGlobalConfigDir(), CK_CONFIG_FILE);
+		return resolveKitConfigPath(CkConfigManager.getGlobalConfigDir());
 	}
 
 	/**
@@ -136,10 +138,13 @@ export class CkConfigManager {
 	}
 
 	/**
-	 * Get the project config file path (projectDir/.claude/.ck.json)
+	 * Get the project config file path (projectDir/.claude/.hk.json).
+	 *
+	 * Same rule as {@link getGlobalConfigPath}: follow the existing filename,
+	 * create the current one.
 	 */
 	static getProjectConfigPath(projectDir: string): string {
-		return join(CkConfigManager.getProjectConfigDir(projectDir), CK_CONFIG_FILE);
+		return resolveKitConfigPath(CkConfigManager.getProjectConfigDir(projectDir));
 	}
 
 	/**
@@ -325,8 +330,8 @@ export class CkConfigManager {
 	 * @returns true if config file exists
 	 */
 	static projectConfigExists(dir: string, isGlobal?: boolean): boolean {
-		const configPath = isGlobal ? join(dir, ".ck.json") : CkConfigManager.getProjectConfigPath(dir);
-		return existsSync(configPath);
+		const configDir = isGlobal ? dir : CkConfigManager.getProjectConfigDir(dir);
+		return findKitConfigPath(configDir) !== null;
 	}
 
 	/**

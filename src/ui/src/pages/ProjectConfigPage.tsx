@@ -1,6 +1,6 @@
 /**
  * Project config editor page - 3-column layout: Form | JSON | Help
- * Edits project/.claude/.ck.json with bidirectional sync between form and JSON
+ * Edits project/.claude/.hk.json with bidirectional sync between form and JSON
  */
 import type React from "react";
 import { useCallback, useMemo, useState } from "react";
@@ -183,7 +183,7 @@ const ProjectConfigPage: React.FC = () => {
 		<div className="animate-in fade-in duration-300 w-full h-full flex flex-col transition-colors">
 			<ConfigEditorHeader
 				title={t("projectConfig")}
-				filePath={projectPath ? `${projectPath}/.claude/.ck.json` : ".claude/.ck.json"}
+				filePath={projectPath ? `${projectPath}/.claude/.hk.json` : ".claude/.hk.json"}
 				onBack={() => navigate(`/project/${projectId}`)}
 				onSave={editor.handleSave}
 				onReset={editor.handleReset}

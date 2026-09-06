@@ -7,6 +7,7 @@ import { type SettingsJson, SettingsMerger } from "@/domains/config/settings-mer
 import { isLegacyDescriptiveNamePrompt } from "@/domains/installation/merger/zombie-wirings-pruner.js";
 import { CLAUDEKIT_CLI_NPM_PACKAGE_NAME } from "@/shared/claudekit-constants.js";
 import { repairClaudeHookCommandPath } from "@/shared/command-normalizer.js";
+import { resolveKitConfigPath } from "@/shared/kit-config-files.js";
 import { logger } from "@/shared/logger.js";
 import { PathResolver } from "@/shared/path-resolver.js";
 import type { CheckResult } from "../types.js";
@@ -1261,8 +1262,8 @@ export async function repairMissingHookFileReferences(projectDir = process.cwd()
  * Check hook configuration validity
  */
 export async function checkHookConfig(projectDir: string): Promise<CheckResult> {
-	const projectConfigPath = join(projectDir, ".claude", ".ck.json");
-	const globalConfigPath = join(PathResolver.getGlobalKitDir(), ".ck.json");
+	const projectConfigPath = resolveKitConfigPath(join(projectDir, ".claude"));
+	const globalConfigPath = resolveKitConfigPath(PathResolver.getGlobalKitDir());
 
 	// Prefer project config, fallback to global
 	const configPath = existsSync(projectConfigPath)

@@ -3,6 +3,12 @@ import { cp, mkdir, readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import {
+	KIT_CONFIG_FILES,
+	KIT_IGNORE_FILES,
+	isKitConfigFile,
+	isKitIgnoreFile,
+} from "@/shared/kit-config-files.js";
+import {
 	findExistingProjectConfigPath,
 	findExistingProjectLayoutPath,
 } from "@/shared/kit-layout.js";
@@ -36,7 +42,7 @@ const HOOKS_SKIP_DIR_NAMES = new Set(["__tests__", "tests", ".logs", "docs"]);
  * Dotfiles (in the hooks source root, NOT subdirs) that should accompany
  * hook scripts to the target because hooks require them at runtime.
  */
-const HOOKS_COMPANION_DOTFILES = new Set([".ckignore"]);
+const HOOKS_COMPANION_DOTFILES = new Set<string>(KIT_IGNORE_FILES);
 
 /**
  * Result of copying companion directories for a hooks install.
@@ -415,7 +421,7 @@ async function collectHookFiles(dir: string, baseDir = dir): Promise<HookFileInf
 		}
 		if (!entry.isFile()) continue;
 		const ext = extname(entry.name).toLowerCase();
-		const isHookLocalDotfile = entry.name === ".ckignore" || entry.name === ".ck.json";
+		const isHookLocalDotfile = isKitIgnoreFile(entry.name) || isKitConfigFile(entry.name);
 		if (!HOOK_ASSET_EXTENSIONS.has(ext) && !isHookLocalDotfile) continue;
 		if (entry.name.startsWith(".") && !isHookLocalDotfile) continue;
 		files.push({ name: relPath, fullPath, ext });
@@ -471,8 +477,9 @@ function collectStaticRequireCandidates(
 			if (fileMap.has(variant)) deps.push(variant);
 		}
 	}
-	if (content.includes(".ckignore") && fileMap.has(".ckignore")) deps.push(".ckignore");
-	if (content.includes(".ck.json") && fileMap.has(".ck.json")) deps.push(".ck.json");
+	for (const name of [...KIT_IGNORE_FILES, ...KIT_CONFIG_FILES]) {
+		if (content.includes(name) && fileMap.has(name)) deps.push(name);
+	}
 	return deps;
 }
 

@@ -104,6 +104,8 @@ export const USER_CONFIG_PATTERNS = [
 	".gitignore",
 	".repomixignore",
 	".mcp.json",
+	".hkignore",
+	".hk.json",
 	".ckignore",
 	".ck.json",
 	"CLAUDE.md",

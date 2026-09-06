@@ -48,7 +48,7 @@ export interface StatuslineTheme {
 	quotaHigh: string;
 }
 
-/** Full layout shape used by the builder and persisted to .ck.json */
+/** Full layout shape used by the builder and persisted to .hk.json */
 export interface StatuslineBuilderLayout {
 	baseMode: StatuslineMode;
 	lines: string[][];

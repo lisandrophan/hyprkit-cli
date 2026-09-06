@@ -6,6 +6,7 @@ import { type SettingsJson, SettingsMerger } from "@/domains/config/settings-mer
 import { pruneZombieEngineerWirings } from "@/domains/installation/merger/zombie-wirings-pruner.js";
 import { normalizeCommand, repairClaudeHookCommandPath } from "@/shared/command-normalizer.js";
 import { parseJsonContent } from "@/shared/json-content.js";
+import { kitConfigPaths } from "@/shared/kit-config-files.js";
 import { logger } from "@/shared/logger.js";
 import { PathResolver } from "@/shared/path-resolver.js";
 import type { InstalledSettings } from "@/types";
@@ -334,10 +335,10 @@ export class SettingsProcessor {
 
 		try {
 			if (this.isGlobal) {
-				await addFromConfig(join(this.projectDir, ".ck.json"));
+				for (const p of kitConfigPaths(this.projectDir)) await addFromConfig(p);
 			} else {
-				await addFromConfig(join(PathResolver.getGlobalKitDir(), ".ck.json"));
-				await addFromConfig(join(this.projectDir, ".claude", ".ck.json"));
+				for (const p of kitConfigPaths(PathResolver.getGlobalKitDir())) await addFromConfig(p);
+				for (const p of kitConfigPaths(join(this.projectDir, ".claude"))) await addFromConfig(p);
 			}
 		} catch (error) {
 			logger.debug(

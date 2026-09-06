@@ -64,13 +64,14 @@ describe("ConfigManager Folders Support", () => {
 	});
 
 	describe("saveProjectConfig", () => {
-		test("should save config to .claude/.ck.json with paths key", async () => {
+		test("should save config to .claude/.hk.json with paths key", async () => {
 			await ConfigManager.saveProjectConfig(testDir, {
 				docs: "saved-docs",
 				plans: "saved-plans",
 			});
 
-			expect(await pathExists(join(testDir, ".claude", ".ck.json"))).toBe(true);
+			// No config present, so the current name is created.
+			expect(await pathExists(join(testDir, ".claude", ".hk.json"))).toBe(true);
 
 			const result = await ConfigManager.loadProjectConfig(testDir);
 			expect(result?.docs).toBe("saved-docs");
@@ -278,8 +279,8 @@ describe("ConfigManager Folders Support", () => {
 					true,
 				);
 
-				// Should save directly to globalDir/.ck.json, NOT globalDir/.claude/.ck.json
-				expect(await pathExists(join(globalDir, ".ck.json"))).toBe(true);
+				// Should save directly to globalDir/.hk.json, NOT globalDir/.claude/.hk.json
+				expect(await pathExists(join(globalDir, ".hk.json"))).toBe(true);
 				expect(await pathExists(join(globalDir, ".claude", ".ck.json"))).toBe(false);
 			});
 
@@ -289,8 +290,8 @@ describe("ConfigManager Folders Support", () => {
 					plans: "local-plans",
 				});
 
-				// Should save to testDir/.claude/.ck.json
-				expect(await pathExists(join(testDir, ".claude", ".ck.json"))).toBe(true);
+				// Should save to testDir/.claude/.hk.json
+				expect(await pathExists(join(testDir, ".claude", ".hk.json"))).toBe(true);
 			});
 		});
 
