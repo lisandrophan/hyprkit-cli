@@ -61,3 +61,16 @@ and the next update would overwrite it. `--force-overwrite` takes the incoming
 version. `settings.json` is exempt (it has its own selective merge) and so is
 `metadata.json` (CLI-managed state, rewritten every run).
 
+**Source archives use the right Accept header.** `application/octet-stream` suits
+the release-asset endpoint but `/tarball/` and `/zipball/` reject it with 415.
+Both are `api.github.com` URLs, so the header was being chosen by host alone. Only
+reachable on a release with no uploaded asset, where the CLI falls back to GitHub's
+automatic tarball.
+
+**Automatic tarballs are filtered.** The release allowlist (`.claude/`, `plans/`,
+`CLAUDE.md`, `AGENTS.md`, `.gitignore`, `.repomixignore`, `.mcp.json`, `.opencode`,
+`release-manifest.json`) was applied to the git-clone path only. Extracting an
+automatic tarball copied the kit repository's own `scripts/`, `docs/`, `guide/`,
+`package.json` and `README.md` into the target project. A pre-built release asset
+is already trimmed by the kit's release job, so this path is left alone.
+

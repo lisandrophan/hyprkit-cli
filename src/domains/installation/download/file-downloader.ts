@@ -171,14 +171,19 @@ export class FileDownloader {
 
 		const headers: Record<string, string> = {};
 
+		// `application/octet-stream` is right for the release-asset endpoint
+		// (/releases/assets/:id) but the source-archive endpoints
+		// (/tarball/:ref, /zipball/:ref) reject it with 415 Unsupported Media Type.
+		// Both are api.github.com URLs, so the header cannot be chosen by host alone.
+		// This only surfaces on a release with no uploaded asset, where the CLI falls
+		// back to GitHub's automatic tarball.
+		const isSourceArchive = /\/(tarball|zipball)\//.test(url);
+		headers.Accept = isSourceArchive ? "application/vnd.github+json" : "application/octet-stream";
+
 		// Add authentication for GitHub API URLs
 		if (token && url.includes("api.github.com")) {
 			headers.Authorization = `Bearer ${token}`;
-			// Use application/octet-stream for asset downloads (not vnd.github+json)
-			headers.Accept = "application/octet-stream";
 			headers["X-GitHub-Api-Version"] = "2022-11-28";
-		} else {
-			headers.Accept = "application/octet-stream";
 		}
 
 		const controller = new AbortController();

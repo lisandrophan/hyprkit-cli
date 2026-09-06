@@ -668,9 +668,35 @@ async function downloadViaApi(
 	// Validate extraction
 	await downloadManager.validateExtraction(extractDir);
 
+	// A release asset is built pre-filtered by the kit's release job, but GitHub's
+	// automatic source archive is the whole repository — installing it unfiltered
+	// drops the kit's own scripts/, docs/, package.json and README into the user's
+	// project. Apply the same allowlist the git-clone path uses.
+	if (downloadInfo.type === "tarball" || downloadInfo.type === "zipball") {
+		const archiveRoot = await resolveArchiveRoot(extractDir);
+		await filterGitClone(archiveRoot);
+		if (archiveRoot !== extractDir) {
+			return { tempDir, archivePath, extractDir: archiveRoot };
+		}
+	}
+
 	return {
 		tempDir,
 		archivePath,
 		extractDir,
 	};
+}
+
+/**
+ * GitHub source archives wrap everything in a single `owner-repo-sha/` directory.
+ * Returns that directory when the extraction is wrapped, else the directory itself.
+ */
+async function resolveArchiveRoot(extractDir: string): Promise<string> {
+	const entries = (await fs.promises.readdir(extractDir, { withFileTypes: true })).filter(
+		(e) => !IGNORED_WRAPPER_ENTRY_NAMES.has(e.name),
+	);
+	if (entries.length === 1 && entries[0].isDirectory()) {
+		return path.join(extractDir, entries[0].name);
+	}
+	return extractDir;
 }
