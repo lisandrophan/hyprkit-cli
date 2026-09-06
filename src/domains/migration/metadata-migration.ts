@@ -62,7 +62,9 @@ export async function detectMetadataFormat(claudeDir: string): Promise<MetadataF
 			// Detect kit type from name using word boundaries to avoid false matches
 			let detectedKit: KitType | null = null;
 			const nameToCheck = parsed.name || "";
-			if (/\bengineer\b/i.test(nameToCheck)) {
+			if (/\bhyprkit\b/i.test(nameToCheck)) {
+				detectedKit = "hyprkit";
+			} else if (/\bengineer\b/i.test(nameToCheck)) {
 				detectedKit = "engineer";
 			} else if (/\bmarketing\b/i.test(nameToCheck)) {
 				detectedKit = "marketing";
@@ -257,6 +259,9 @@ export function getInstalledKits(metadata: Metadata): KitType[] {
 	const nameToCheck = metadata.name || "";
 	const kits: KitType[] = [];
 
+	if (/\bhyprkit\b/i.test(nameToCheck)) {
+		kits.push("hyprkit");
+	}
 	if (/\bengineer\b/i.test(nameToCheck)) {
 		kits.push("engineer");
 	}

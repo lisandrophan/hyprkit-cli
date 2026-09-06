@@ -54,6 +54,24 @@ describe("metadata-migration", () => {
 			expect(result.detectedKit).toBe("engineer");
 		});
 
+		it("detects legacy format with the hyprkit kit", async () => {
+			// The kit ships metadata.json in legacy format with name "hyprkit". Without
+			// a branch for it, detection fell through to the "default to engineer" case
+			// and every install invented a phantom engineer kit alongside the real one.
+			const legacy: Metadata = {
+				name: "hyprkit",
+				version: "0.1.0",
+				installedAt: "2026-09-06T00:00:00.000Z",
+				scope: "local",
+				files: [],
+			};
+			await writeFile(join(testDir, "metadata.json"), JSON.stringify(legacy));
+
+			const result = await detectMetadataFormat(testDir);
+			expect(result.format).toBe("legacy");
+			expect(result.detectedKit).toBe("hyprkit");
+		});
+
 		it("detects legacy format with marketing kit", async () => {
 			const legacy: Metadata = {
 				name: "ClaudeKit Marketing",
