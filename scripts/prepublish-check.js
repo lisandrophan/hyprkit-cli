@@ -107,6 +107,15 @@ function readPackageName() {
 	return packageJson.name;
 }
 
+function readBinName() {
+	const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+	const names = Object.keys(packageJson.bin ?? {});
+	if (names.length !== 1) {
+		throw new Error(`Expected exactly one bin entry in package.json, found ${names.length}`);
+	}
+	return names[0];
+}
+
 function readCliManifestVersion() {
 	const manifest = JSON.parse(readFileSync("cli-manifest.json", "utf8"));
 	return manifest.version;
@@ -408,8 +417,13 @@ async function verifyInstalledCli({ logger, tarballPath, expectedVersion }) {
 			{ encoding: "utf8" },
 		);
 
+		// Derived from package.json rather than hardcoded, so renaming the binary
+		// cannot silently break this gate.
+		const binName = readBinName();
 		const cliPath =
-			process.platform === "win32" ? join(prefixDir, "ck.cmd") : join(prefixDir, "bin", "ck");
+			process.platform === "win32"
+				? join(prefixDir, `${binName}.cmd`)
+				: join(prefixDir, "bin", binName);
 		if (!existsSync(cliPath)) {
 			throw new Error(`Installed CLI entry point not found at ${cliPath}`);
 		}
