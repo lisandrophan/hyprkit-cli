@@ -360,7 +360,7 @@ List, restore, and prune ClaudeKit recovery backups
 
 | Flag | Description | Default |
 |------|-------------|----------|
-| `list [--limit <n>] [--json]` | List recovery backups under ~/.claudekit/backups/ | — |
+| `list [--limit <n>] [--json]` | List recovery backups under ~/.hyprkit/backups/ | — |
 | `restore <id> [--yes] [--json]` | Restore a specific recovery backup to its original source root | — |
 | `prune [id] [--keep <n> \| --all] [--yes] [--json]` | Delete one, many, or old recovery backups | — |
 | `--limit <n>` | Show only the newest N backups | — |
@@ -384,7 +384,7 @@ ClaudeKit keeps the newest recovery backups automatically and prunes older ones 
 
 ### list
 
-List recovery backups under ~/.claudekit/backups/
+List recovery backups under ~/.hyprkit/backups/
 
 **Usage:** `ck backups list [--limit <n>] [--json]`
 
@@ -446,7 +446,7 @@ Manage ClaudeKit configuration and launch the config dashboard
 | `get <key>` | Read a config value | — |
 | `set <key> <value>` | Write a config value | — |
 | `show` | Print merged config | — |
-| `-g, --global` | Use global config (~/.claudekit/config.json) | — |
+| `-g, --global` | Use global config (~/.hyprkit/config.json) | — |
 | `-l, --local` | Use local config (.claude/.ck.json) | — |
 | `--port <port>` | Port for dashboard server | — |
 | `--host <host>` | Bind dashboard host (default: 127.0.0.1) | — |
@@ -615,7 +615,7 @@ Initialize or update ClaudeKit project (with interactive version selection)
 | `--archive <path>` | Use local archive file instead of downloading (zip/tar.gz) | — |
 | `--kit-path <path>` | Use local kit directory instead of downloading | — |
 | `--dir <directory>` | Target directory to initialize/update | `.` |
-| `--kit <kit>` | Kit to use (engineer, marketing) | — |
+| `--kit <kit>` | Kit to use (hyprkit, engineer, marketing) | — |
 | `-r, --release <version>` | Skip version selection, use specific version | — |
 | `-g, --global` | Use platform-specific user configuration directory | — |
 | `--fresh` | Full reset: remove CK files, replace settings.json and CLAUDE.md, reinstall from scratch | — |
@@ -708,7 +708,7 @@ Bootstrap a new ClaudeKit project (with interactive version selection)
 | `--archive <path>` | Use local archive file instead of downloading (zip/tar.gz) | — |
 | `--kit-path <path>` | Use local kit directory instead of downloading | — |
 | `--dir <directory>` | Target directory for the new project | `.` |
-| `--kit <kit>` | Kit to use (engineer, marketing) | — |
+| `--kit <kit>` | Kit to use (hyprkit, engineer, marketing) | — |
 | `-r, --release <version>` | Skip version selection, use specific version (e.g., latest, v1.0.0) | — |
 | `--force` | Overwrite existing files without confirmation | — |
 | `--exclude <pattern>` | Exclude files matching glob pattern (can be used multiple times) | — |
@@ -972,7 +972,7 @@ Install, uninstall, and manage ClaudeKit skills across coding agents
 
   • Skills are installed from ~/.claude/skills (ClaudeKit Engineer source)
   • OpenCode reuses Claude-compatible skill roots (.claude/skills, ~/.claude/skills), so installs may be a no-op
-  • Registry stored at ~/.claudekit/skill-registry.json
+  • Registry stored at ~/.hyprkit/skill-registry.json
   • Target paths vary by agent; some agents intentionally share a common skills directory
 
 
@@ -989,7 +989,7 @@ Remove ClaudeKit installations (ownership-aware)
 | `-l, --local` | Uninstall only local installation (current project) | — |
 | `-g, --global` | Uninstall only global installation (~/.claude/) | — |
 | `-A, --all` | Uninstall from both local and global locations | — |
-| `-k, --kit <type>` | Uninstall specific kit only (engineer, marketing) | — |
+| `-k, --kit <type>` | Uninstall specific kit only (hyprkit, engineer, marketing) | — |
 | `--dry-run` | Preview what would be removed without deleting | — |
 | `--force-overwrite` | Delete even user-modified files (requires confirmation) | — |
 | `-y, --yes` | Skip confirmation prompt | — |
@@ -1044,7 +1044,7 @@ List available versions of ClaudeKit repositories
 
 | Flag | Description | Default |
 |------|-------------|----------|
-| `--kit <kit>` | Filter by specific kit (engineer, marketing) | — |
+| `--kit <kit>` | Filter by specific kit (hyprkit, engineer, marketing) | — |
 | `--limit <number>` | Number of releases to show | `30` |
 | `--all` | Show all releases including prereleases | — |
 
@@ -1075,4 +1075,4 @@ Watch GitHub issues and auto-respond with AI analysis
 - `ck watch --interval 60000` — Poll every 60 seconds instead of default 30s
 
 
-<!-- generated: 2026-06-15T17:47:28.452Z -->
+<!-- generated: 2026-09-06T07:35:14.862Z -->

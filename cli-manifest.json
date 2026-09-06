@@ -1,6 +1,6 @@
 {
-	"version": "4.5.2",
-	"generatedAt": "2026-07-03T23:08:41.266Z",
+	"version": "0.1.0",
+	"generatedAt": "2026-09-06T07:35:14.614Z",
 	"commands": {
 		"agents": {
 			"name": "agents",
@@ -597,7 +597,7 @@
 					"options": [
 						{
 							"flags": "list [--limit <n>] [--json]",
-							"description": "List recovery backups under ~/.claudekit/backups/"
+							"description": "List recovery backups under ~/.hyprkit/backups/"
 						},
 						{
 							"flags": "restore <id> [--yes] [--json]",
@@ -638,7 +638,7 @@
 			"subcommands": [
 				{
 					"name": "list",
-					"description": "List recovery backups under ~/.claudekit/backups/",
+					"description": "List recovery backups under ~/.hyprkit/backups/",
 					"usage": "ck backups list [--limit <n>] [--json]",
 					"examples": [],
 					"optionGroups": []
@@ -792,7 +792,7 @@
 					"options": [
 						{
 							"flags": "-g, --global",
-							"description": "Use global config (~/.claudekit/config.json)"
+							"description": "Use global config (~/.hyprkit/config.json)"
 						},
 						{
 							"flags": "-l, --local",
@@ -1117,7 +1117,7 @@
 						},
 						{
 							"flags": "--kit <kit>",
-							"description": "Kit to use (engineer, marketing)"
+							"description": "Kit to use (hyprkit, engineer, marketing)"
 						},
 						{
 							"flags": "-r, --release <version>",
@@ -1392,7 +1392,7 @@
 						},
 						{
 							"flags": "--kit <kit>",
-							"description": "Kit to use (engineer, marketing)"
+							"description": "Kit to use (hyprkit, engineer, marketing)"
 						},
 						{
 							"flags": "-r, --release <version>",
@@ -1929,7 +1929,7 @@
 				},
 				{
 					"title": "Notes",
-					"content": "  • Skills are installed from ~/.claude/skills (ClaudeKit Engineer source)\n  • OpenCode reuses Claude-compatible skill roots (.claude/skills, ~/.claude/skills), so installs may be a no-op\n  • Registry stored at ~/.claudekit/skill-registry.json\n  • Target paths vary by agent; some agents intentionally share a common skills directory"
+					"content": "  • Skills are installed from ~/.claude/skills (ClaudeKit Engineer source)\n  • OpenCode reuses Claude-compatible skill roots (.claude/skills, ~/.claude/skills), so installs may be a no-op\n  • Registry stored at ~/.hyprkit/skill-registry.json\n  • Target paths vary by agent; some agents intentionally share a common skills directory"
 				}
 			]
 		},
@@ -1969,7 +1969,7 @@
 						},
 						{
 							"flags": "-k, --kit <type>",
-							"description": "Uninstall specific kit only (engineer, marketing)"
+							"description": "Uninstall specific kit only (hyprkit, engineer, marketing)"
 						}
 					]
 				},
@@ -2095,7 +2095,7 @@
 					"options": [
 						{
 							"flags": "--kit <kit>",
-							"description": "Filter by specific kit (engineer, marketing)"
+							"description": "Filter by specific kit (hyprkit, engineer, marketing)"
 						},
 						{
 							"flags": "--limit <number>",
