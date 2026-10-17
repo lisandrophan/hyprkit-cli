@@ -101,6 +101,14 @@ export async function resolveOptions(ctx: InitContext): Promise<InitContext> {
 		);
 	}
 
+	// --dry-run previews a merge against what is on disk now. --fresh deletes .claude
+	// first and --sync runs its own merge, so neither has a preview that is honest.
+	if (validOptions.dryRun && (validOptions.fresh || validOptions.sync)) {
+		throw new Error(
+			`--dry-run cannot be combined with ${validOptions.fresh ? "--fresh" : "--sync"}.`,
+		);
+	}
+
 	// Note: --sync + --use-git IS allowed
 	// --sync reads version from local metadata.json, then git clone downloads it
 	// This supports users who want to reinstall same version but only have git auth

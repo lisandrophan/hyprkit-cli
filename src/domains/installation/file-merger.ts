@@ -11,7 +11,7 @@ import type { ReleaseManifest } from "@/domains/migration/release-manifest.js";
 import { logger } from "@/shared/logger.js";
 import { type KitType, NEVER_COPY_PATTERNS } from "@/types";
 import * as clack from "@clack/prompts";
-import { CopyExecutor } from "./merger/copy-executor.js";
+import { CopyExecutor, type PlannedChange } from "./merger/copy-executor.js";
 import type { FileConflictInfo } from "./selective-merger.js";
 
 /**
@@ -124,6 +124,21 @@ export class FileMerger {
 		this.copyExecutor.setTrackedChecksums(checksums, forceOverwrite);
 	}
 
+	/** Files a dry run would create, overwrite or merge. */
+	getPlannedChanges(): PlannedChange[] {
+		return this.copyExecutor.getPlannedChanges();
+	}
+
+	/** Keep existing destination-root files that differ from the kit's. */
+	setProtectRootFiles(protect: boolean): void {
+		this.copyExecutor.setProtectRootFiles(protect);
+	}
+
+	/** Pre-existing project-root files (AGENTS.md, CLAUDE.md, ...) that were kept. */
+	getProtectedRootFiles(): string[] {
+		return this.copyExecutor.getProtectedRootFiles();
+	}
+
 	/** Kit files skipped because the user had edited them. */
 	getLocallyModifiedFiles(): string[] {
 		return this.copyExecutor.getLocallyModifiedFiles();
@@ -139,9 +154,16 @@ export class FileMerger {
 	}
 
 	/**
-	 * Merge files from source to destination with conflict detection
+	 * Merge files from source to destination with conflict detection.
+	 * With `dryRun`, nothing is written: see {@link getPlannedChanges}.
 	 */
-	async merge(sourceDir: string, destDir: string, skipConfirmation = false): Promise<void> {
+	async merge(
+		sourceDir: string,
+		destDir: string,
+		skipConfirmation = false,
+		dryRun = false,
+	): Promise<void> {
+		this.copyExecutor.setDryRun(dryRun);
 		// Get list of files that will be affected
 		const conflicts = await this.copyExecutor.detectConflicts(sourceDir, destDir);
 
@@ -157,7 +179,7 @@ export class FileMerger {
 			}
 		}
 
-		if (conflicts.length > 0 && !skipConfirmation) {
+		if (conflicts.length > 0 && !skipConfirmation && !dryRun) {
 			logger.warning(`Found ${conflicts.length} file(s) that will be overwritten:`);
 			conflicts.slice(0, 10).forEach((file) => logger.info(`  - ${file}`));
 			if (conflicts.length > 10) {

@@ -22,6 +22,7 @@ import type { KitType, Metadata } from "@/types";
 import type { ClaudeKitMetadata } from "@/types";
 import { pathExists, readFile } from "fs-extra";
 import type { InitContext } from "../types.js";
+import { reportDryRun, reportKeptFiles } from "./merge-report.js";
 
 /**
  * Merge files and track ownership
@@ -96,6 +97,8 @@ export async function handleMerge(ctx: InitContext): Promise<InitContext> {
 	}
 
 	merger.setGlobalFlag(ctx.options.global);
+	// A local install's destination root is the user's project root.
+	merger.setProtectRootFiles(!ctx.options.global);
 	merger.setForceOverwriteSettings(ctx.options.forceOverwriteSettings);
 	merger.setPreserveDeletedSkills(!ctx.options.forceOverwrite && !ctx.options.fresh);
 	merger.setRestoreCkHooks(ctx.options.restoreCkHooks);
@@ -127,11 +130,15 @@ export async function handleMerge(ctx: InitContext): Promise<InitContext> {
 		merger.setManifest(releaseManifest);
 	}
 
+	const dryRun = ctx.options.dryRun;
+
 	// Legacy migration
 	if (!ctx.options.fresh && (await pathExists(ctx.claudeDir))) {
 		const legacyDetection = await LegacyMigration.detectLegacy(ctx.claudeDir);
 
-		if (legacyDetection.isLegacy && releaseManifest) {
+		if (legacyDetection.isLegacy && releaseManifest && dryRun) {
+			logger.info("Legacy installation detected - would migrate to ownership tracking");
+		} else if (legacyDetection.isLegacy && releaseManifest) {
 			logger.info("Legacy installation detected - migrating to ownership tracking...");
 			await LegacyMigration.migrate(
 				ctx.claudeDir,
@@ -156,11 +163,9 @@ export async function handleMerge(ctx: InitContext): Promise<InitContext> {
 			},
 		);
 
-		if (ctx.options.dryRun) {
+		if (dryRun) {
 			const { OwnershipDisplay } = await import("@/domains/ui/ownership-display.js");
 			OwnershipDisplay.displayOperationPreview(cleanupResult.results);
-			ctx.prompts.outro("Dry-run complete. No changes were made.");
-			return { ...ctx, cancelled: true };
 		}
 	}
 
@@ -185,22 +190,16 @@ export async function handleMerge(ctx: InitContext): Promise<InitContext> {
 	}
 
 	// Merge files
-	await merger.merge(sourceDir, ctx.resolvedDir, ctx.isNonInteractive);
+	await merger.merge(sourceDir, ctx.resolvedDir, ctx.isNonInteractive, dryRun);
 
-	// Name the kit files we held back. Staying quiet about this would be as bad as
-	// the silent overwrite it replaces: the user needs to know an update was skipped
-	// and how to take it.
-	const locallyModified = merger.getLocallyModifiedFiles();
-	if (locallyModified.length > 0) {
-		logger.warning(
-			`Kept ${locallyModified.length} locally modified kit file(s) — the update for these was not applied:`,
-		);
-		for (const path of locallyModified.slice(0, 10)) logger.warning(`    ${path}`);
-		if (locallyModified.length > 10) {
-			logger.warning(`    ... and ${locallyModified.length - 10} more`);
-		}
-		logger.warning("    Re-run with --force-overwrite to take the incoming versions.");
+	// A dry run stops here: no deletions, no metadata, no post-install steps.
+	if (dryRun) {
+		reportDryRun(merger, sourceMetadata?.deletions ?? []);
+		ctx.prompts.outro("Dry run complete. No changes were made.");
+		return { ...ctx, customClaudeFiles, includePatterns, cancelled: true };
 	}
+
+	reportKeptFiles(merger, false);
 
 	// Display conflict resolution summary if any conflicts occurred
 	const fileConflicts = merger.getFileConflicts();

@@ -122,11 +122,12 @@ export const initCommandHelp: CommandHelp = {
 				},
 				{
 					flags: "--dry-run",
-					description: "Preview changes without applying them (requires --prefix)",
+					description: "Preview what would change without writing anything",
 				},
 				{
 					flags: "--force-overwrite",
-					description: "Override ownership protections and delete user-modified files",
+					description:
+						"Overwrite files the merge would keep: edited kit files, existing project-root files (AGENTS.md, CLAUDE.md), user-modified commands",
 				},
 				{
 					flags: "--force-overwrite-settings",

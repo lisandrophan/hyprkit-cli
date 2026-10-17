@@ -628,8 +628,8 @@ Initialize or update ClaudeKit project (with interactive version selection)
 | `--with-sudo` | Include system packages requiring sudo (Linux: ffmpeg, imagemagick) | — |
 | `--prefix` | Add /ck: prefix to all slash commands | — |
 | `--skip-setup` | Skip interactive configuration wizard | — |
-| `--dry-run` | Preview changes without applying them (requires --prefix) | — |
-| `--force-overwrite` | Override ownership protections and delete user-modified files | — |
+| `--dry-run` | Preview what would change without writing anything | — |
+| `--force-overwrite` | Overwrite files the merge would keep: edited kit files, existing project-root files (AGENTS.md, CLAUDE.md), user-modified commands | — |
 | `--force-overwrite-settings` | Fully replace settings.json instead of selective merge | — |
 | `--restore-ck-hooks` | Restore CK-managed hook registrations during update self-heal | — |
 | `--docs-dir <name>` | Custom docs folder name to avoid conflicts with existing folders | `docs` |

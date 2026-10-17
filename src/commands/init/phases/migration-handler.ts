@@ -39,7 +39,12 @@ export async function handleMigration(ctx: InitContext): Promise<InitContext> {
 		currentSkillsDir,
 	);
 
-	if (migrationDetection.status === "recommended" || migrationDetection.status === "required") {
+	const migrationNeeded =
+		migrationDetection.status === "recommended" || migrationDetection.status === "required";
+
+	if (migrationNeeded && ctx.options.dryRun) {
+		logger.info("Skills migration detected - dry run, not migrating");
+	} else if (migrationNeeded) {
 		logger.info("Skills migration detected");
 
 		const migrationResult = await SkillsMigrator.migrate(newSkillsDir, currentSkillsDir, {

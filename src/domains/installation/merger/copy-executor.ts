@@ -44,6 +44,12 @@ const isRetryable = (e: unknown): boolean => {
  */
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/** What a dry run reports it would do to one file. */
+export interface PlannedChange {
+	path: string;
+	action: "create" | "overwrite" | "merge";
+}
+
 /**
  * CopyExecutor handles file copying with conflict detection and selective merge
  */
@@ -70,6 +76,13 @@ export class CopyExecutor {
 	private installingKit: KitType | null = null;
 	private ignoredSkillDirectories: Set<string> = new Set();
 	private preserveDeletedSkills = true;
+	/** Keep existing project-root files rather than replace them (local init). */
+	private protectRootFiles = false;
+	/** Pre-existing project-root files kept instead of being replaced by the kit's. */
+	private protectedRootFiles: string[] = [];
+	/** Classify every file instead of writing anything. */
+	private dryRun = false;
+	private plannedChanges: PlannedChange[] = [];
 
 	constructor(neverCopyPatterns: string[]) {
 		this.userConfigChecker = ignore().add(USER_CONFIG_PATTERNS);
@@ -165,6 +178,33 @@ export class CopyExecutor {
 	setTrackedChecksums(checksums: Map<string, string>, forceOverwrite = false): void {
 		this.trackedChecksums = checksums;
 		this.forceOverwrite = forceOverwrite;
+	}
+
+	/**
+	 * Keep files that already exist at the destination root (AGENTS.md, CLAUDE.md,
+	 * ...) when they differ from the incoming ones. For a local install the
+	 * destination root is the user's project root.
+	 */
+	setProtectRootFiles(protect: boolean): void {
+		this.protectRootFiles = protect;
+	}
+
+	/**
+	 * Record what would be written instead of writing it. Every protection still
+	 * runs, so the preview lists exactly the files a real run would touch.
+	 */
+	setDryRun(dryRun: boolean): void {
+		this.dryRun = dryRun;
+	}
+
+	/** Files a dry run would create, overwrite or merge. */
+	getPlannedChanges(): PlannedChange[] {
+		return [...this.plannedChanges];
+	}
+
+	/** Pre-existing project-root files (AGENTS.md, CLAUDE.md, ...) that were kept. */
+	getProtectedRootFiles(): string[] {
+		return [...this.protectedRootFiles].sort();
 	}
 
 	/** Kit files skipped because the user had edited them. */
@@ -310,11 +350,27 @@ export class CopyExecutor {
 				}
 			}
 
-			// Special handling for settings.json
-			if (
+			const isSettings =
 				normalizedRelativePath === "settings.json" ||
-				normalizedRelativePath === ".claude/settings.json"
-			) {
+				normalizedRelativePath === ".claude/settings.json";
+
+			// Tier 2c: Keep files the user already has at the project root. A local
+			// install copies the kit's root files (AGENTS.md, CLAUDE.md, ...) next to the
+			// user's own project files, and those are almost always written by hand.
+			// Nothing records a previous kit install of them, so any existing root file
+			// that differs from the incoming one is the user's.
+			if (!isSettings && (await this.isProtectedRootFile(normalizedRelativePath, file, destPath))) {
+				logger.debug(`Preserving existing project file: ${normalizedRelativePath}`);
+				this.protectedRootFiles.push(normalizedRelativePath);
+				continue;
+			}
+
+			// Special handling for settings.json
+			if (isSettings) {
+				if (this.dryRun) {
+					await this.planChange(normalizedRelativePath, destPath, "merge");
+					continue;
+				}
 				await this.settingsProcessor.processSettingsJson(file, destPath);
 				this.trackInstalledFile(normalizedRelativePath);
 				copiedCount++;
@@ -352,10 +408,17 @@ export class CopyExecutor {
 				}
 			}
 
+			if (this.dryRun) {
+				await this.planChange(normalizedRelativePath, destPath);
+				continue;
+			}
+
 			await withRetry(() => copy(file, destPath, { overwrite: true }));
 			this.trackInstalledFile(normalizedRelativePath);
 			copiedCount++;
 		}
+
+		if (this.dryRun) return;
 
 		// Build success message with selective merge stats
 		const parts: string[] = [];
@@ -428,6 +491,29 @@ export class CopyExecutor {
 			this.installedDirectories.add(`${dir}/`);
 			dir = dirname(dir);
 		}
+	}
+
+	private async planChange(
+		relativePath: string,
+		destPath: string,
+		existingAction: PlannedChange["action"] = "overwrite",
+	): Promise<void> {
+		const exists = await pathExists(destPath);
+		this.plannedChanges.push({ path: relativePath, action: exists ? existingAction : "create" });
+	}
+
+	private async isProtectedRootFile(
+		relativePath: string,
+		sourcePath: string,
+		destPath: string,
+	): Promise<boolean> {
+		if (!this.protectRootFiles || this.forceOverwrite || relativePath.includes("/")) return false;
+		if (!(await pathExists(destPath))) return false;
+		const [incoming, existing] = await Promise.all([
+			OwnershipChecker.calculateChecksum(sourcePath),
+			OwnershipChecker.calculateChecksum(destPath),
+		]);
+		return incoming !== existing;
 	}
 
 	private async loadIgnoredSkillDirectories(

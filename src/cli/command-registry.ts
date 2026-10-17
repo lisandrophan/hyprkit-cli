@@ -101,10 +101,10 @@ export function registerCommands(cli: ReturnType<typeof cac>): void {
 		)
 		.option("--beta", "Show beta versions in selection prompt")
 		.option("--refresh", "Bypass release cache to fetch latest versions from GitHub")
-		.option("--dry-run", "Preview changes without applying them (requires --prefix)")
+		.option("--dry-run", "Preview what would change without writing anything")
 		.option(
 			"--force-overwrite",
-			"Override ownership protections and delete user-modified files (requires --prefix)",
+			"Overwrite files the merge would keep: edited kit files, existing project-root files (AGENTS.md, CLAUDE.md), user-modified commands",
 		)
 		.option(
 			"--force-overwrite-settings",
