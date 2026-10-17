@@ -267,7 +267,7 @@ export async function handleSelection(ctx: InitContext): Promise<InitContext> {
 	}
 
 	const resolvedDir = resolve(targetDir);
-	if (ctx.options.global) {
+	if (ctx.options.global && !ctx.options.dryRun) {
 		try {
 			const repairResult = await repairLegacyWindowsGlobalKitDir({ targetDir: resolvedDir });
 			if (repairResult.status === "repaired") {
@@ -324,7 +324,9 @@ export async function handleSelection(ctx: InitContext): Promise<InitContext> {
 
 	// Check if directory exists (create if global mode)
 	if (!(await pathExists(resolvedDir))) {
-		if (ctx.options.global) {
+		if (ctx.options.global && ctx.options.dryRun) {
+			logger.info(`Dry run: would create global directory ${resolvedDir}`);
+		} else if (ctx.options.global) {
 			await mkdir(resolvedDir, { recursive: true });
 			logger.info(`Created global directory: ${resolvedDir}`);
 		} else {

@@ -39,7 +39,7 @@ export async function handleTransforms(ctx: InitContext): Promise<InitContext> {
 	}
 
 	// In global mode, auto-migrate .ck.json from nested location if needed
-	if (ctx.options.global) {
+	if (ctx.options.global && !ctx.options.dryRun) {
 		await ConfigManager.migrateNestedConfig(ctx.resolvedDir);
 	}
 
@@ -73,7 +73,7 @@ export async function handleTransforms(ctx: InitContext): Promise<InitContext> {
 		);
 
 		// Save folder config to project for future updates (only if CLI flags provided)
-		if (ctx.options.docsDir || ctx.options.plansDir) {
+		if ((ctx.options.docsDir || ctx.options.plansDir) && !ctx.options.dryRun) {
 			await ConfigManager.saveProjectConfig(
 				ctx.resolvedDir,
 				{

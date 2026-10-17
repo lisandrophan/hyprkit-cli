@@ -30,8 +30,8 @@ export async function handleConflicts(ctx: InitContext): Promise<InitContext> {
 		return ctx;
 	}
 
-	if (ctx.isNonInteractive) {
-		// CI mode: warn and proceed
+	if (ctx.isNonInteractive || ctx.options.dryRun) {
+		// CI mode or dry run: warn and proceed without touching the local install
 		logger.warning(
 			"Local .claude/settings.json detected. Local settings take precedence over global.",
 		);

@@ -21,6 +21,7 @@ touches, so a merge conflict anywhere else means the fork has drifted.
 | `src/shared/deletion-pattern-expander.ts` | Registers `hk` as the legacy command prefix for the hyprkit kit |
 | npm package self-detection | The package-manager detectors look for `hyprkit-cli` rather than `claudekit-cli` |
 | Help text | `--kit` now lists `hyprkit, engineer, marketing` |
+| `src/commands/init/phases/*`, `src/domains/installation/file-merger.ts`, `merger/copy-executor.ts` | `init --dry-run` previews without writing; existing project-root files are kept unless `--force-overwrite` (see below) |
 
 Deliberately **not** changed: the ClaudeKit name in user-facing output, comments and
 the config dashboard. Renaming ~900 strings across 269 files would turn every upstream
@@ -59,6 +60,23 @@ and the next update would overwrite it. `--force-overwrite` takes the incoming
 version. `settings.json` is exempt (it has its own selective merge) and so is
 `metadata.json` (CLI-managed state, rewritten every run).
 
+**`init --dry-run` writes nothing.** Upstream only honoured `--dry-run` together with
+`--prefix`; without it the flag was ignored and the full install ran. Dry run now
+goes through the same merge, classifies every file instead of copying it, prints
+what would be created, overwritten, merged or kept, and stops before deletions,
+metadata tracking and post-install steps. The earlier phases skip their own writes
+too (skills migration, legacy metadata migration, global directory creation, nested
+config migration, folder config, OpenCode relocation). `--dry-run` with `--fresh` or
+`--sync` is rejected, since neither has an honest preview.
+
+**Existing project-root files are kept.** A local install copies the kit's root
+files (`AGENTS.md`, `CLAUDE.md`, ...) into the project root, where the user usually
+already has hand-written ones, and upstream replaced them. An existing root file
+that differs from the incoming one is now kept and listed, like custom `.claude`
+files; `--force-overwrite` takes the kit's version. Local installs never record root
+files in `metadata.json`, so there is no baseline to tell a kit-installed copy from
+the user's own: any differing file is treated as the user's.
+
 **Source archives use the right Accept header.** `application/octet-stream` suits
 the release-asset endpoint but `/tarball/` and `/zipball/` reject it with 415.
 Both are `api.github.com` URLs, so the header was being chosen by host alone. Only
@@ -74,7 +92,7 @@ is already trimmed by the kit's release job, so this path is left alone.
 
 ## Bugs fixed
 
-All five were found by installing the kit and checking the result, not by reading
+These were found by installing the kit and checking the result, not by reading
 the code. They affect any kit, not just this one.
 
 **Manifest lookups never matched.** Release manifests key kit files with the
@@ -101,3 +119,10 @@ an automatic tarball copied the kit repository's own `scripts/`, `docs/`, `guide
 **Legacy kit detection defaulted to `engineer`.** A kit ships `metadata.json` with
 its name at the top level, and the matcher only knew `engineer` and `marketing`, so
 installing any other kit invented a phantom `engineer` entry beside the real one.
+
+**`--dry-run` was ignored without `--prefix`.** Running `hk init --kit hyprkit -y
+--dry-run` downloaded the release, migrated metadata and wrote the whole kit into the
+project.
+
+**A hand-written `AGENTS.md` was replaced by the kit template.** Root files of the
+kit were copied over whatever the project already had at its root.

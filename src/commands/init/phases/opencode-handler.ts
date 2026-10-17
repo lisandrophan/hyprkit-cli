@@ -31,7 +31,9 @@ export async function handleOpenCode(ctx: InitContext): Promise<InitContext> {
 
 	logger.info("Processing .opencode configuration...");
 
-	if (ctx.options.global) {
+	if (ctx.options.global && ctx.options.dryRun) {
+		logger.info(`Dry run: would install OpenCode config to ${PathResolver.getOpenCodeDir(true)}`);
+	} else if (ctx.options.global) {
 		// Global mode: relocate to platform global path
 		const targetDir = PathResolver.getOpenCodeDir(true);
 

@@ -1,6 +1,6 @@
 {
 	"version": "0.1.1",
-	"generatedAt": "2026-09-06T09:55:54.829Z",
+	"generatedAt": "2026-10-17T02:57:52.104Z",
 	"commands": {
 		"agents": {
 			"name": "agents",
@@ -1179,11 +1179,11 @@
 						},
 						{
 							"flags": "--dry-run",
-							"description": "Preview changes without applying them (requires --prefix)"
+							"description": "Preview what would change without writing anything"
 						},
 						{
 							"flags": "--force-overwrite",
-							"description": "Override ownership protections and delete user-modified files"
+							"description": "Overwrite files the merge would keep: edited kit files, existing project-root files (AGENTS.md, CLAUDE.md), user-modified commands"
 						},
 						{
 							"flags": "--force-overwrite-settings",
